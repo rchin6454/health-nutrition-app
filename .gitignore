@@ -1,0 +1,25 @@
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets — never commit real keys (see .env.example)
+.env
+.env.*
+!.env.example
+
+# Python (backend)
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Raw data downloads (IFCT, USDA, guidance PDFs) — large and license-restricted
+backend/data/raw/
+
+# Eval run outputs
+backend/tests/evals/results/
