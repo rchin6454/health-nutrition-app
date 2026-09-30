@@ -1,0 +1,70 @@
+import ReactMarkdown from "react-markdown";
+import type { ChatResponse } from "@/lib/types";
+
+export type ChatItem =
+  | { kind: "user"; id: string; text: string }
+  | { kind: "assistant"; id: string; response: ChatResponse }
+  // The request never produced a ChatResponse (network failure, HTTP error).
+  | { kind: "client_error"; id: string; text: string };
+
+export default function MessageBubble({ item }: { item: ChatItem }) {
+  if (item.kind === "user") {
+    return (
+      <div className="flex justify-end">
+        <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-emerald-600 px-4 py-2 whitespace-pre-wrap text-white">
+          {item.text}
+        </p>
+      </div>
+    );
+  }
+
+  if (item.kind === "client_error") {
+    return (
+      <div
+        role="alert"
+        className={`${bubble} border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950`}
+      >
+        <p className="text-red-800 dark:text-red-200">{item.text}</p>
+      </div>
+    );
+  }
+
+  const { response } = item;
+  if (response.answer_type === "error") {
+    return (
+      <div
+        role="alert"
+        className={`${bubble} border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950`}
+      >
+        <p className="text-red-800 dark:text-red-200">{response.answer}</p>
+        <p className="mt-2 font-mono text-xs text-red-700 dark:text-red-300">
+          Reference: {response.request_id}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${bubble} border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900`}
+    >
+      <div className="markdown">
+        <ReactMarkdown>{response.answer}</ReactMarkdown>
+      </div>
+      {response.claims.length > 0 && (
+        <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+          <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+            Claims
+          </h3>
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
+            {response.claims.map((claim, i) => (
+              <li key={i}>{claim.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const bubble = "max-w-[85%] rounded-2xl rounded-bl-sm border px-4 py-3";

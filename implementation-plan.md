@@ -72,58 +72,60 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 1 — Walking Skeleton (Live)
 
+> **Status (2026-09-30):** code, tests and CI done; migration applied to Supabase; verified locally against real Groq + Supabase (happy path, history reload, invalid-model failure). Railway/Vercel deployment still to do.
+
 **Goal:** a thin but complete path through the whole system, deployed to a public URL, that already satisfies every hard rule.
 
 **Rules satisfied:** R1, R2, R3, R4, R6, R7, R8, R9, R10.
 
 ### 1.1 Database
 
-- [ ] Write `backend/migrations/001_core.sql` with `conversations`, `messages` and `failures` (§8.2, §8.3).
-- [ ] Apply it to Supabase.
-- [ ] `app/db.py`: async connection pool (`asyncpg`), with the connection string from `config.py`.
+- [x] Write `backend/migrations/001_core.sql` with `conversations`, `messages` and `failures` (§8.2, §8.3).
+- [x] Apply it to Supabase.
+- [x] `app/db.py`: async connection pool (`asyncpg`), with the connection string from `config.py`.
 
 ### 1.2 Schemas
 
-- [ ] `app/schemas/answer.py`: `Claim`, `LLMAnswer`, `ChatResponse` exactly as in §6.2.
+- [x] `app/schemas/answer.py`: `Claim`, `LLMAnswer`, `ChatResponse` exactly as in §6.2.
   - `Claim.source: None`, and every model uses `extra="forbid"`.
-- [ ] `app/llm/strict_schema.py`: `to_groq_strict(model)` produces JSON Schema with:
+- [x] `app/llm/strict_schema.py`: `to_groq_strict(model)` produces JSON Schema with:
   - `additionalProperties: false` on every object
   - every property listed in `required`
   - `source` typed as `{"type": "null"}`
-- [ ] Unit tests:
+- [x] Unit tests:
   - the generated `LLMAnswer` schema equals the JSON in §6.2
   - `Claim(text="x", source="abc")` fails validation
 
 ### 1.3 LLM client
 
-- [ ] `app/llm/client.py`: `AsyncGroq(max_retries=0, timeout=30)`, plus a `structured_call()` using `response_format: json_schema, strict: true` (§5.6).
-- [ ] Model IDs come from env (`MODEL_ANSWER`). No other module imports `groq`.
-- [ ] Catch `RateLimitError`, `APIStatusError`, `APIConnectionError` and `APITimeoutError`, and raise a typed internal `LLMCallError(kind=...)`.
+- [x] `app/llm/client.py`: `AsyncGroq(max_retries=0, timeout=30)`, plus a `structured_call()` using `response_format: json_schema, strict: true` (§5.6).
+- [x] Model IDs come from env (`MODEL_ANSWER`). No other module imports `groq`.
+- [x] Catch `RateLimitError`, `APIStatusError`, `APIConnectionError` and `APITimeoutError`, and raise a typed internal `LLMCallError(kind=...)`.
 
 ### 1.4 Failure recording
 
-- [ ] `app/failures.py`: `record_failure(request_id, conversation_id, stage, failure_type, severity, model, prompt_version, user_message, raw_output, error_detail, latency_ms)`.
-- [ ] It must never raise. If the database write itself fails, it logs to stderr with the full payload.
+- [x] `app/failures.py`: `record_failure(request_id, conversation_id, stage, failure_type, severity, model, prompt_version, user_message, raw_output, error_detail, latency_ms)`.
+- [x] It must never raise. If the database write itself fails, it logs to stderr with the full payload.
 
 ### 1.5 Validation
 
-- [ ] `app/pipeline/validate.py`:
+- [x] `app/pipeline/validate.py`:
   - parse with `LLMAnswer.model_validate_json(raw)` (no repair)
   - hard invariants: `source_not_null`, `empty_answer`, `empty_claims`, `length_exceeded` (§6.4)
   - final `ChatResponse.model_validate`
-- [ ] Any failure → `record_failure(...)` → an `error` `ChatResponse`.
+- [x] Any failure → `record_failure(...)` → an `error` `ChatResponse`.
 
 ### 1.6 Response builders
 
-- [ ] `app/responses.py`: `build_answer_response`, `build_error_response`. Both return validated `ChatResponse` objects, with the `notices` disclaimer added by code.
+- [x] `app/responses.py`: `build_answer_response`, `build_error_response`. Both return validated `ChatResponse` objects, with the `notices` disclaimer added by code.
 
 ### 1.7 Conversation store
 
-- [ ] `app/store/conversations.py`: `upsert_conversation`, `add_message`, `load_recent(conversation_id, n)`, `load_all`, `delete`.
+- [x] `app/store/conversations.py`: `upsert_conversation`, `add_message`, `load_recent(conversation_id, n)`, `load_all`, `delete`.
 
 ### 1.8 API
 
-- [ ] `POST /api/chat`:
+- [x] `POST /api/chat`:
   1. Generate a `request_id`.
   2. Upsert the conversation.
   3. Store the user message.
@@ -131,24 +133,24 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
   5. Validate.
   6. Store the assistant `ChatResponse`.
   7. Return it.
-- [ ] `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}`.
-- [ ] `GET /api/schema` (the `ChatResponse` JSON Schema) and `GET /api/health`.
-- [ ] CORS limited to `ALLOWED_ORIGINS`.
-- [ ] `app/prompts/answer.md` with `PROMPT_VERSION = "answer-v0.1"`.
+- [x] `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}`.
+- [x] `GET /api/schema` (the `ChatResponse` JSON Schema) and `GET /api/health`.
+- [x] CORS limited to `ALLOWED_ORIGINS`.
+- [x] `app/prompts/answer.md` with `PROMPT_VERSION = "answer-v0.1"`.
 
 ### 1.9 Frontend
 
-- [ ] `lib/types.ts` generated from `/api/schema` (`json-schema-to-typescript`, added as an npm script).
-- [ ] `lib/api.ts`: `sendMessage()`, `getConversation()`, `deleteConversation()`.
-- [ ] `app/page.tsx`: two-column layout, with `ChatPanel` on the left and `SourcesPanel` on the right (stacked on mobile).
-- [ ] Components:
+- [x] `lib/types.ts` generated from `/api/schema` (`json-schema-to-typescript`, added as an npm script).
+- [x] `lib/api.ts`: `sendMessage()`, `getConversation()`, `deleteConversation()`.
+- [x] `app/page.tsx`: two-column layout, with `ChatPanel` on the left and `SourcesPanel` on the right (stacked on mobile).
+- [x] Components:
   - `MessageList`
   - `MessageBubble` (answer as Markdown, then claims as bullets)
   - `ChatInput` (Enter sends, Shift+Enter adds a new line, disabled while sending, 1,000-character limit)
   - `SourcesPanel` (**no props**, always shows "No sources to show.")
   - `SuggestedPrompts` (the 5 problem-statement examples)
-- [ ] `conversation_id` stored in `localStorage`; reload fetches history; "New chat" button.
-- [ ] "Thinking…" indicator, error bubble showing the `request_id`, and the disclaimer footer.
+- [x] `conversation_id` stored in `localStorage`; reload fetches history; "New chat" button.
+- [x] "Thinking…" indicator, error bubble showing the `request_id`, and the disclaimer footer.
 
 ### 1.10 Deployment
 
