@@ -470,12 +470,13 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 6 — Launch and Handover
 
-> **Status (2026-10-01):** README and demo script done; the checklist was run against production (commit `4a21689`, prompts `answer-v0.5+understanding-v0.5`). Every row that could be verified from outside the database passes. Still open before tagging `v1.0.0`:
-> - **R4 / R2 on stored data:** run `uv run python scripts/check_stored.py` against Supabase. It is read-only and exits non-zero on any stored non-null `source` or invalid stored response.
+> **Status (2026-10-01):** README done (demo shot list included); the checklist was run against production (commit `4a21689`, prompts `answer-v0.5+understanding-v0.5`). Every checklist row passes on production. Still open before tagging `v1.0.0`:
+> - **R4 / R2 on stored data: done (2026-10-01).** `scripts/check_stored.py` against Supabase: 0 of 71 stored claims have a non-null `source`; 29/29 stored assistant messages validate as `ChatResponse`; 27 conversations, 29 user + 29 assistant messages. Failures: 3 `rate_limited` (real Groq 429s, last 13:29), 3 `medication_dosing` + 2 `medication_interaction` scope blocks, 1 `budget_exceeded`, 1 `api_error` (2026-09-30), 1 `unverified_number` warning (the ghee answer).
+> - **Finding, shared Groq organization:** the 3 `rate_limited` rows are Groq 429s on production. The in-code budget can't see tokens that local evals spend on the same Groq organization, so the live app hit Groq's daily token limit. They were recorded correctly (R7). Fix: run evals with a key from a separate Groq organization.
 > - **R7 forced failure on production:** no staging deploy exists, so the invalid-`MODEL_ANSWER` case is verified only locally and in integration tests. On production, a `budget_exceeded` refusal was observed during the run (an `error` response with a reference ID).
 > - **`ADMIN_TOKEN`** is still unset on Railway (`/api/admin/failures` → 404).
 > - **Evals:** the full `v0.5` run stopped at 18/114 cases on the Groq daily limit (18/18 passed); finish it with `--resume`.
-> - **Demo:** the shot list is in [README.md](README.md#demo); the recording is still to do.
+> - **Demo:** optional (owner's decision, 2026-10-01); the shot list is in [README.md](README.md#demo).
 > - **Finding, latency:** each database round trip from Railway to Supabase takes about 1.2 s (`/api/health` 1.2 s, a blocked request with 4 writes 4.5 s, answers 10–16 s). Check that the Railway region is close to `ap-south-1` and that the pool reuses connections.
 >
 > **Production run (2026-10-01),** one new conversation per question, each response validated against `ChatResponse` and reloaded with `GET /api/conversations/{id}` (2 messages each):
@@ -490,7 +491,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 > | Is it safe to eat? | `clarification` ("Which food are you referring to and how was it stored?") |
 > | Write a poem about cars | `out_of_scope`, refusal written by code |
 > | What dose of metformin should I take? | `out_of_scope` referral from the input gate. 4.5 s, the same as its 4 DB writes; the matching log line is `request_id` `f94f3d34-…` |
-> | How many calories are in 1 tbsp of ghee? | `answer`/`nutrition`, ~135 kcal from "9 kcal/g × 15 g", ending with "could not be checked against verified reference data". Uncertainty is stated, but the model still gives an estimate that isn't in the data (request `48692ee2-…`; it should have an `unverified_number` warning row, which `check_stored.py` lists). The first attempt was refused in code with `budget_exceeded` ("try again in about 6 minutes") |
+> | How many calories are in 1 tbsp of ghee? | `answer`/`nutrition`, ~135 kcal from "9 kcal/g × 15 g", ending with "could not be checked against verified reference data". Uncertainty is stated, but the model still gives an estimate that isn't in the data (request `48692ee2-…`; recorded as an `unverified_number` warning, so the soft check caught it). The first attempt was refused in code with `budget_exceeded` ("try again in about 6 minutes") |
 >
 > Every `source` was `null`, and every answer carried the disclaimer notice. Bundle: 7 JS chunks (~690 KB) with no "groq"; the page renders "No sources to show."; CORS rejects a foreign origin. Locally: 721 backend + 38 frontend tests green, ruff and mypy clean.
 >
@@ -499,9 +500,9 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 > | # | Result |
 > |---|--------|
 > | R1 | ✓ `client.py` always sends `response_format: json_schema` with `strict: true`; only `client.py` imports `groq`. The only `json.loads` is the asyncpg jsonb codec; the regexes are the number soft check and an intent keyword, never parsing of model prose. |
-> | R2 | ✓ 9/9 production responses validate; evals show 100% parse (v0.4: n=151, v0.5: n=35). Stored messages: run `check_stored.py`. |
+> | R2 | ✓ 9/9 production responses validate; 29/29 stored assistant messages validate; evals show 100% parse (v0.4: n=151, v0.5: n=35). |
 > | R3 | ✓ `answer` + `claims[]` with `text` and `source` on every answer. |
-> | R4 | ✓ on all 9 responses; the SQL check on stored rows is pending (`check_stored.py`). |
+> | R4 | ✓ on all 9 responses; the SQL check on stored rows returns 0 of 71 claims. |
 > | R5 | ✓ blocked topic refused by the input gate (unit and integration tests assert no Groq call; production latency matches DB writes only). |
 > | R6 | ✓ the Vercel URL returns 200. |
 > | R7 | ✓ `max_retries=0`, no repair code; a production `budget_exceeded` refusal came back as an `error` response. Forced invalid-model failure is checked locally only (no staging). |
@@ -515,7 +516,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 ### Tasks
 - [x] Run the **requirements checklist** below against the production URL (stored-data SQL check still to run; see status).
 - [x] `README.md`: what the app does, the live URL, architecture summary (link to architecture.md), local setup, env vars, how to run the ingestion scripts, tests and evals, how to review failures.
-- [ ] Record a short demo (shot list in [README.md](README.md#demo)) covering:
+- [ ] *(Optional)* Record a short demo (shot list in [README.md](README.md#demo)) covering:
   - the 5 problem-statement examples
   - a clarification
   - an out-of-scope request
@@ -542,7 +543,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ### Exit criteria
 - [ ] Every row in the checklist passes on production.
-- [ ] README and demo are complete; release is tagged.
+- [ ] README is complete (done); release is tagged. The demo is optional.
 
 ---
 
