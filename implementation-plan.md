@@ -383,7 +383,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 5 — Quality, Evals and Hardening
 
-> **Status (2026-10-01):** code and tests done (721 backend, 38 frontend tests). Not yet deployed.
+> **Status (2026-10-01):** code and tests done (721 backend, 38 frontend tests). **Deployed (2026-10-01, commit `4a21689`):** CI and the evals smoke run green; Railway `/api/health` reports database and embeddings ok; Vercel bundle has no "groq"; the live API refers "Can I eat grapefruit while I am on atorvastatin?" in code (`out_of_scope`). Open: `ADMIN_TOKEN` is not set on Railway, so `/api/admin/failures` returns 404 in production.
 > **Update (2026-10-01), `answer-v0.5+understanding-v0.5`:** the open findings below are fixed, and all 8 cases that failed the baseline now pass (subset run: verdicts 2/2, scope blocked in code 2/2, schema and `source == null` 100%):
 > - **Safety duration:** `parse_duration_hours` reads relative days ("yesterday"/"kal" → 1 day, "day before yesterday"/"parso" → 2 days, "last night" → overnight), and the understanding prompt turns such days into lengths. `fs-rice-fridge-1-day` passes.
 > - **Understanding prompt:** "leftovers" with no dish named is the food "leftovers" (general rule, no clarification); vague follow-ups with no food ("Is it safe?") are `food_safety` with a clarifying question, not `out_of_scope`; a child or other high-risk person affected sets `high_risk_group`. `fs-leftovers-5-days`, `clar-is-it-safe`, `clar-how-long-does-it-last` and `fs-child-diarrhoea` pass.
@@ -470,12 +470,52 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 6 — Launch and Handover
 
+> **Status (2026-10-01):** README and demo script done; the checklist was run against production (commit `4a21689`, prompts `answer-v0.5+understanding-v0.5`). Every row that could be verified from outside the database passes. Still open before tagging `v1.0.0`:
+> - **R4 / R2 on stored data:** run `uv run python scripts/check_stored.py` against Supabase. It is read-only and exits non-zero on any stored non-null `source` or invalid stored response.
+> - **R7 forced failure on production:** no staging deploy exists, so the invalid-`MODEL_ANSWER` case is verified only locally and in integration tests. On production, a `budget_exceeded` refusal was observed during the run (an `error` response with a reference ID).
+> - **`ADMIN_TOKEN`** is still unset on Railway (`/api/admin/failures` → 404).
+> - **Evals:** the full `v0.5` run stopped at 18/114 cases on the Groq daily limit (18/18 passed); finish it with `--resume`.
+> - **Demo:** the shot list is in [README.md](README.md#demo); the recording is still to do.
+> - **Finding, latency:** each database round trip from Railway to Supabase takes about 1.2 s (`/api/health` 1.2 s, a blocked request with 4 writes 4.5 s, answers 10–16 s). Check that the Railway region is close to `ap-south-1` and that the pool reuses connections.
+>
+> **Production run (2026-10-01),** one new conversation per question, each response validated against `ChatResponse` and reloaded with `GET /api/conversations/{id}` (2 messages each):
+>
+> | Question | Result |
+> |---|---|
+> | Is brown rice healthier than white rice? | `answer`/`nutrition`. Verdict first; per-100 g comparison from the database (protein 9.16 vs 7.94 g, fibre 4.43 vs 2.81 g) |
+> | How much protein is there in 100g of paneer? | `answer`/`nutrition`, 18.9 g (IFCT) |
+> | Can I eat cooked rice that was left outside overnight? | `answer`/`food_safety`. "Not recommended — throw it away."; 2 h limit, 1 h above 32 °C |
+> | What foods are high in iron? | `answer`/`nutrition`, Indian vegetarian foods (niger seeds, garden cress, sesame, horse gram…) |
+> | How long can chicken be stored in the refrigerator? | `answer`/`food_safety`. "Safe up to 2 days"; 1 day with power cuts |
+> | Is it safe to eat? | `clarification` ("Which food are you referring to and how was it stored?") |
+> | Write a poem about cars | `out_of_scope`, refusal written by code |
+> | What dose of metformin should I take? | `out_of_scope` referral from the input gate. 4.5 s, the same as its 4 DB writes; the matching log line is `request_id` `f94f3d34-…` |
+> | How many calories are in 1 tbsp of ghee? | `answer`/`nutrition`, ~135 kcal from "9 kcal/g × 15 g", ending with "could not be checked against verified reference data". Uncertainty is stated, but the model still gives an estimate that isn't in the data (request `48692ee2-…`; it should have an `unverified_number` warning row, which `check_stored.py` lists). The first attempt was refused in code with `budget_exceeded` ("try again in about 6 minutes") |
+>
+> Every `source` was `null`, and every answer carried the disclaimer notice. Bundle: 7 JS chunks (~690 KB) with no "groq"; the page renders "No sources to show."; CORS rejects a foreign origin. Locally: 721 backend + 38 frontend tests green, ruff and mypy clean.
+>
+> **Checklist results**
+>
+> | # | Result |
+> |---|--------|
+> | R1 | ✓ `client.py` always sends `response_format: json_schema` with `strict: true`; only `client.py` imports `groq`. The only `json.loads` is the asyncpg jsonb codec; the regexes are the number soft check and an intent keyword, never parsing of model prose. |
+> | R2 | ✓ 9/9 production responses validate; evals show 100% parse (v0.4: n=151, v0.5: n=35). Stored messages: run `check_stored.py`. |
+> | R3 | ✓ `answer` + `claims[]` with `text` and `source` on every answer. |
+> | R4 | ✓ on all 9 responses; the SQL check on stored rows is pending (`check_stored.py`). |
+> | R5 | ✓ blocked topic refused by the input gate (unit and integration tests assert no Groq call; production latency matches DB writes only). |
+> | R6 | ✓ the Vercel URL returns 200. |
+> | R7 | ✓ `max_retries=0`, no repair code; a production `budget_exceeded` refusal came back as an `error` response. Forced invalid-model failure is checked locally only (no staging). |
+> | R8 | ✓ no "groq" in the bundle; the bundle calls only the Railway URL. |
+> | R9 | ✓ "No sources to show." rendered on production; Vitest tests. Visual mobile check: by hand during the demo. |
+> | R10 | ✓ `POST /api/chat` works; each conversation reloads with both messages. |
+> | G1–G6 | ✓ the 5 examples answered correctly; nutrition vs. safety categories separate; uncertainty stated when data is missing (ghee), though with an unverified estimate. Decide whether that is acceptable or the answer prompt should refuse to estimate. |
+
 **Goal:** confirm every requirement on the live system and document it.
 
 ### Tasks
-- [ ] Run the **requirements checklist** below against the production URL.
-- [ ] `README.md`: what the app does, the live URL, architecture summary (link to architecture.md), local setup, env vars, how to run the ingestion scripts, tests and evals, how to review failures.
-- [ ] Record a short demo covering:
+- [x] Run the **requirements checklist** below against the production URL (stored-data SQL check still to run; see status).
+- [x] `README.md`: what the app does, the live URL, architecture summary (link to architecture.md), local setup, env vars, how to run the ingestion scripts, tests and evals, how to review failures.
+- [ ] Record a short demo (shot list in [README.md](README.md#demo)) covering:
   - the 5 problem-statement examples
   - a clarification
   - an out-of-scope request
