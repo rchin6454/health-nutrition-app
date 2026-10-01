@@ -72,7 +72,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 1 — Walking Skeleton (Live)
 
-> **Status (2026-09-30):** code, tests and CI done; migration applied to Supabase; verified locally against real Groq + Supabase (happy path, history reload, invalid-model failure). Railway/Vercel deployment still to do.
+> **Status (2026-09-30):** code, tests and CI done; migration applied to Supabase; deployed. Frontend: https://health-nutrition-app-nine.vercel.app · Backend: https://health-nutrition-app-production-6937.up.railway.app. Verified live via the API (answer + claims, all `source` null, history reload, CORS, no "groq" in the bundle). The invalid-model failure was verified locally; there is no separate staging deploy yet.
 
 **Goal:** a thin but complete path through the whole system, deployed to a public URL, that already satisfies every hard rule.
 
@@ -154,9 +154,9 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ### 1.10 Deployment
 
-- [x] `backend/Dockerfile` (uvicorn) — added in Phase 0. Deploy to Railway with env vars from §13.
-- [ ] Frontend deployed to Vercel with `NEXT_PUBLIC_API_URL`.
-- [ ] Set `ALLOWED_ORIGINS` to the Vercel production domain.
+- [x] `backend/Dockerfile` (uvicorn) — added in Phase 0. Deployed to Railway with env vars from §13 (`railway.toml`).
+- [x] Frontend deployed to Vercel with `NEXT_PUBLIC_API_URL`.
+- [x] Set `ALLOWED_ORIGINS` to the Vercel production domain.
 
 ### Tests
 - Unit: schema export, validation invariants, response builders (each returns a valid `ChatResponse`).
@@ -169,15 +169,21 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ### Exit criteria (Definition of Done)
 - [ ] The public Vercel URL answers "Is brown rice healthier than white rice?" with an answer and a claims list.
-- [ ] The response JSON parses against `/api/schema`, and every `source` is `null`.
+- [x] The response JSON parses against `/api/schema`, and every `source` is `null`.
 - [ ] The sources panel is visible next to the conversation and empty.
 - [ ] Refreshing the page restores the conversation from the database.
 - [ ] Setting `MODEL_ANSWER` to an invalid model on a staging deploy produces a `failures` row and an `error` bubble. Nothing is silently retried.
-- [ ] `GROQ_API_KEY` appears only in Railway's environment. Searching the frontend bundle for "groq" finds nothing.
+- [x] `GROQ_API_KEY` appears only in Railway's environment. Searching the frontend bundle for "groq" finds nothing.
 
 ---
 
 ## Phase 2 — Question Understanding + Scope Gates
+
+> **Status (2026-09-30):** code and tests done (186 backend, 30 frontend). The exit criteria were verified locally against the real Groq models, not yet on the live URL. Prompts: `answer-v0.2.1` + `understanding-v0.1`. Notes:
+> - The classification gate checks the `medication` risk flag **before** `needs_clarification`, so a medicine question gets a referral instead of a follow-up question.
+> - Referrals (blocked topics, medication flag, bad length) are returned as `answer_type=out_of_scope`. Each blocked topic is recorded as a `scope_block` row whose `failure_type` is the topic (e.g. `medication_dosing`).
+> - The first live run found `claims: []` when `<context>` was empty; this was fixed in the prompt (`answer-v0.2.1`), not in code.
+> - **Groq rate limits** (free tier, per model: 30 RPM, 1K RPD, 8K TPM, 200K TPD) are enforced in code by `app/llm/rate_limit.py`. Before each call, a per-model budget checks all four limits. A call waits up to `LLM_MAX_WAIT_S` (8 s) for the per-minute window; otherwise it is refused **without calling Groq**, recorded as `budget_exceeded`, and the user is told when to try again. Groq's `x-ratelimit-*` headers correct the local counts, a 429's `retry-after` puts the model in cooldown, and at startup the day window is re-filled from `messages.usage`. Measured cost is ~1,800–2,350 tokens (understanding) + ~1,500–1,800 (answer) per question, so capacity is about **4 questions/minute** and **~100 questions/day** (the daily token limit binds first). Understanding runs at `reasoning_effort=low`; both calls have a `max_completion_tokens` cap (Groq counts actual tokens, not the cap).
 
 **Goal:** the system understands what is being asked, asks for clarification when needed, and enforces scope in code.
 
@@ -186,52 +192,52 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ### 2.1 Understanding call
 
-- [ ] `app/schemas/analysis.py`: `QuestionAnalysis` and its nested models (§5.3), all fields required, `extra="forbid"`.
-- [ ] `app/prompts/understanding.md` (§9.2):
+- [x] `app/schemas/analysis.py`: `QuestionAnalysis` and its nested models (§5.3), all fields required, `extra="forbid"`.
+- [x] `app/prompts/understanding.md` (§9.2):
   - category definitions with the 5 problem-statement examples and Hinglish variants
   - clarification rules
   - normalization of Indian food names
   - `risk_flags`
-- [ ] `app/pipeline/understanding.py`: calls Groq with `MODEL_UNDERSTANDING` (`openai/gpt-oss-20b`), includes the last 6 turns, validates, and records failures (stage `understanding`).
-- [ ] Store `analysis` on the user's message row.
+- [x] `app/pipeline/understanding.py`: calls Groq with `MODEL_UNDERSTANDING` (`openai/gpt-oss-20b`), includes the last 6 turns, validates, and records failures (stage `understanding`).
+- [x] Store `analysis` on the user's message row.
 
 ### 2.2 Scope gates (`app/scope/`)
 
-- [ ] `blocked_topics.py`: keyword/regex lists for:
+- [x] `blocked_topics.py`: keyword/regex lists for:
   - medication or supplement dosing
   - diagnosis requests
   - weight-loss drugs
   - eating-disorder behaviours
   - alcohol or drug advice
-- [ ] `input_gate.py` (§7, Gate 1):
+- [x] `input_gate.py` (§7, Gate 1):
   - length check (2–1,000 characters)
   - blocked topics → code-written referral response + a `scope_block` row
   - emergency keywords → flag for a 112/108 notice
   - injection patterns → `injection_suspected` row; the request continues
-- [ ] `classification_gate.py` (Gate 2):
+- [x] `classification_gate.py` (Gate 2):
   - `out_of_scope` → code response
   - unknown category → failure
   - `needs_clarification` → clarification response
   - `medication` risk flag → referral response
-- [ ] `output_gate.py` (Gate 3):
+- [x] `output_gate.py` (Gate 3):
   - runs the invariants
   - sets `category` from the analysis, not the model
   - adds `notices` (disclaimer, emergency, high-risk group)
 
 ### 2.3 Orchestrator
 
-- [ ] `app/pipeline/orchestrator.py`: input gate → understanding → classification gate → prompt builder → answer call → validation → output gate (the lifecycle in §4).
-- [ ] `app/pipeline/prompt_builder.py`: system prompt + recent turns + `<question_analysis>` and `<user_question>` blocks (the `<context>` block stays empty until Phases 3–4).
-- [ ] `app/responses.py`: add `build_clarification_response`, `build_out_of_scope_response`, `build_referral_response`.
+- [x] `app/pipeline/orchestrator.py`: input gate → understanding → classification gate → prompt builder → answer call → validation → output gate (the lifecycle in §4).
+- [x] `app/pipeline/prompt_builder.py`: system prompt + recent turns + `<question_analysis>` and `<user_question>` blocks (the `<context>` block stays empty until Phases 3–4).
+- [x] `app/responses.py`: add `build_clarification_response`, `build_out_of_scope_response`, `build_referral_response`.
 
 ### 2.4 Answer prompt
 
-- [ ] Update `answer.md` to the full §9.1 draft (India context, food-safety verdict first, conservative wording, `source` always null). Bump to `answer-v0.2`.
+- [x] Update `answer.md` to the full §9.1 draft (India context, food-safety verdict first, conservative wording, `source` always null). Bump to `answer-v0.2`.
 
 ### 2.5 Frontend
 
-- [ ] `CategoryBadge`: Nutrition / Food Safety / General Food / Needs more detail / Out of scope / Error.
-- [ ] Render `notices` below the answer (highlighted for emergency notices).
+- [x] `CategoryBadge`: Nutrition / Food Safety / General Food / Needs more detail / Out of scope / Error.
+- [x] Render `notices` below the answer (highlighted for emergency notices).
 
 ### Tests
 - Unit: every gate, with a table of at least 40 inputs (allowed, blocked, emergency, injection, too long, empty).
@@ -240,16 +246,23 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 - Manual: the 5 problem-statement examples on the live URL.
 
 ### Exit criteria
-- [ ] The 5 problem-statement examples are classified correctly (nutrition / food safety).
-- [ ] "Is it safe to eat?" → `answer_type=clarification`.
-- [ ] "What dose of metformin should I take?" is blocked by the **input gate**, which the logs show, with no Groq call.
-- [ ] "Write a poem about cars" → `out_of_scope`.
-- [ ] Every response type (answer, clarification, out_of_scope, error) parses against the schema.
-- [ ] A Hinglish question ("kya raat ka chawal kha sakte hai?") is understood as a food-safety question.
+- [x] The 5 problem-statement examples are classified correctly (nutrition / food safety).
+- [x] "Is it safe to eat?" → `answer_type=clarification`.
+- [x] "What dose of metformin should I take?" is blocked by the **input gate**, which the logs show, with no Groq call.
+- [x] "Write a poem about cars" → `out_of_scope`.
+- [x] Every response type (answer, clarification, out_of_scope, error) parses against the schema.
+- [x] A Hinglish question ("kya raat ka chawal kha sakte hai?") is understood as a food-safety question.
 
 ---
 
 ## Phase 3 — Nutrition Knowledge (India-first)
+
+> **Status (2026-09-30):** code and tests done (401 backend tests). Exit criteria verified **locally** against the real Groq models with the full data loaded into a local Postgres; not yet on Supabase or the live URL (run `migrate.py`, then `fetch_raw` + `run_all` against Supabase, then redeploy). Prompts: `answer-v0.3.1` + `understanding-v0.3.1`. Data: 542 IFCT foods + 47 curated USDA foods, 55 household measures, ~5,450 food names. Notes:
+> - IFCT covers raw foods only. Cooked dishes (roti, idli, dosa, dal, cooked rice) and a few foods IFCT lacks (curd, oats, besan) come from USDA SR Legacy + FNDDS, and the answer says those values come from international reference data. Dataset names never reach the prompt; they're stored only in `Fact.origin` / `context_snapshot`.
+> - Raw-ingredient measures use ICMR-NIN serving sizes (1 katori cooked dal ≈ 30 g raw dal, 1 katori palak ≈ 100 g raw leaves); cooked items use FNDDS portion weights (1 roti ≈ 40 g, 1 idli ≈ 38 g). Every conversion's assumption is passed to the model.
+> - The fuzzy fallback is narrower than planned: multi-word names only, and never against IFCT's local-language names. In testing it matched "kheer" → cucumber (kheera) and "makhana" → butter (makhan).
+> - 30-question run: 3/30 (10%) `unverified_number` warnings with `answer-v0.3.1`. Two had root causes that were then fixed (the understanding step dropped "a glass" as a quantity; masala dosa was missing from the data), and a targeted re-run confirmed both. The third is a real model error the check caught ("600 mg" vitamin C in amla against 252 mg in context), recorded and not patched. A full 30-question re-run on the final prompts is still to do (it needs a fresh day of Groq quota).
+> - IFCT reuse terms are still unconfirmed (open decision 4). Raw files are git-ignored; the test fixtures contain 21 IFCT rows.
 
 **Goal:** nutrient answers are grounded in IFCT data, with USDA as a fallback, and support Indian food names and household measures.
 
@@ -257,40 +270,41 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ### 3.1 Data acquisition
 
-- [ ] Get IFCT 2017 tables (ICMR-NIN) and confirm their license and reuse terms.
-- [ ] Download USDA FoodData Central (Foundation Foods + SR Legacy) CSVs.
-- [ ] Write `backend/data/portions.yaml`: katori, cup, glass, tbsp, tsp, roti, idli, dosa, handful → grams (generic + food-specific).
-- [ ] Write `backend/data/synonyms.yaml`: English + Hindi + regional names (dahi, chawal, baingan, bhindi, arhar/toor, rajma, atta, palak, methi, ragi, bajra, jowar…).
+- [x] Get IFCT 2017 tables (ICMR-NIN): the digitized table from github.com/nodef/ifct2017, pinned to one commit by `scripts/ingest/fetch_raw.py`.
+- [ ] Confirm IFCT 2017's license and reuse terms (open decision 4; raw files stay out of Git until then).
+- [x] Download USDA FoodData Central CSVs: SR Legacy + FNDDS survey foods (FNDDS has idli, dosa, dal, sambar, roti; Foundation Foods had nothing IFCT lacks). Only the FDC IDs curated in `data/usda_foods.yaml` are loaded.
+- [x] Write `backend/data/portions.yaml`: katori, cup, glass, tbsp, tsp, roti, idli, dosa, handful → grams (generic + food-specific).
+- [x] Write `backend/data/synonyms.yaml`: English + Hindi + regional names (dahi, chawal, baingan, bhindi, arhar/toor, rajma, atta, palak, methi, ragi, bajra, jowar…).
 
 ### 3.2 Schema and ingestion
 
-- [ ] `migrations/002_knowledge.sql`: `foods`, `food_synonyms`, `nutrients`, `portion_weights` (§10.2).
-- [ ] Ingestion scripts (idempotent, each run tagged with a `dataset_version`):
+- [x] `migrations/002_knowledge.sql`: `foods`, `food_synonyms`, `nutrients`, `portion_weights` (§10.2).
+- [x] Ingestion scripts (idempotent, each run tagged with a `dataset_version`; `run_all.py` runs them in order):
   - `scripts/ingest/load_ifct.py`
   - `scripts/ingest/load_usda.py` (only foods missing from IFCT, or tagged as fallback)
   - `scripts/ingest/load_portions.py`
   - `scripts/ingest/build_synonyms.py`
-- [ ] Standardize nutrient names across both datasets (`protein`, `iron`, `energy_kcal`, …).
+- [x] Standardize nutrient names across both datasets (`protein`, `iron`, `energy_kcal`, …).
 
 ### 3.3 Knowledge modules
 
-- [ ] `knowledge/entity_resolver.py`: exact synonym match → `rapidfuzz` fallback (threshold ~85) → IFCT preferred over USDA → `unresolved_entities`.
-- [ ] `knowledge/units.py`: household measure → grams; metric conversions.
-- [ ] `knowledge/nutrition.py`:
+- [x] `knowledge/entity_resolver.py`: exact synonym match → `rapidfuzz` fallback (threshold 85; multi-word names only, never against local-language names) → IFCT preferred over USDA → `unresolved_entities`.
+- [x] `knowledge/units.py`: household measure → grams; metric conversions.
+- [x] `knowledge/nutrition.py`:
   - per-100 g lookup
   - scaling to the user's quantity
   - comparison facts (e.g. brown vs. white rice)
   - recommendation query (top 10 by nutrient, vegetarian by default)
   - adds a USDA-fallback assumption when USDA data is used
-- [ ] `schemas/context.py`: `Fact`, `Passage`, `ContextBundle` (§5.4).
+- [x] `schemas/context.py`: `Fact`, `Passage`, `ContextBundle` (§5.4).
 
 ### 3.4 Pipeline integration
 
-- [ ] The orchestrator calls the knowledge layer for `nutrition`, `general_food` and `mixed` categories.
-- [ ] The prompt builder fills the `<context>` block with facts `F1..Fn` and assumptions.
-- [ ] Store `context_snapshot` on the assistant message row.
-- [ ] Add the soft check `unverified_number`: numbers in claims that aren't in the context facts → `warning` row. The response is returned unchanged.
-- [ ] Bump the prompt to `answer-v0.3`.
+- [x] The orchestrator calls the knowledge layer for `nutrition`, `general_food` and `mixed` categories. A lookup error is recorded (`retrieval`/`knowledge_lookup_failed`) and the answer runs without context.
+- [x] The prompt builder fills the `<context>` block with facts `F1..Fn` and assumptions.
+- [x] Store `context_snapshot` on the assistant message row.
+- [x] Add the soft check `unverified_number`: numbers in claims that aren't in the context facts → `warning` row. The response is returned unchanged.
+- [x] Bump the prompt to `answer-v0.3` (and `understanding-v0.3`: `non-vegetarian`/`eggetarian` in `user_context`).
 
 ### Tests
 - Unit: synonym resolution (at least 30 Indian names), unit conversion, scaling maths, recommendation query filtering.
@@ -298,16 +312,25 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 - Integration: an unknown food → `unresolved_entities` is filled and the answer says the data couldn't be verified.
 
 ### Exit criteria
-- [ ] "How much protein is there in 100g of paneer?" → the number in the claim matches IFCT.
-- [ ] "Calories in 2 rotis" and "iron in 1 katori palak" use the correct household-measure conversions.
-- [ ] "What foods are high in iron?" returns Indian vegetarian foods by default.
-- [ ] "Is brown rice healthier than white rice?" uses comparison facts from the database.
+- [x] "How much protein is there in 100g of paneer?" → the number in the claim matches IFCT (18.9 g).
+- [x] "Calories in 2 rotis" and "iron in 1 katori palak" use the correct household-measure conversions (80 g → 239 kcal; 100 g raw → 2.95 mg).
+- [x] "What foods are high in iron?" returns Indian vegetarian foods by default.
+- [x] "Is brown rice healthier than white rice?" uses comparison facts from the database.
 - [ ] `unverified_number` warnings appear in fewer than 10% of nutrition answers in a 30-question manual run.
-- [ ] The sources panel is still empty, and every `source` is still `null` (dataset names stay in `context_snapshot` only).
+- [x] The sources panel is still empty, and every `source` is still `null` (dataset names stay in `context_snapshot` only).
 
 ---
 
 ## Phase 4 — Food-Safety Knowledge + Retrieval
+
+> **Status (2026-10-01):** code and tests done (541 backend tests). Exit criteria verified **locally** against the real Groq models and the real embedding model, using a local Postgres + pgvector with all data loaded. **Supabase is done (2026-10-01):** migrations 002 + 003 applied and every loader run (Phase 3 nutrition data included), and pgvector retrieval verified there. **Still to do:** commit and redeploy the Phase 2–4 code (the live backend still runs Phase 1; the Docker image now bundles the embedding model), then repeat the exit-criteria questions on the live URL. Prompts: `answer-v0.4` + `understanding-v0.4`. Notes:
+> - 47 curated rules for 13 food groups plus power cuts. Each rule takes the cautious end of the published range. Paneer, homemade curd, fresh chutneys and cut fruit have no FSSAI/WHO/USDA number, so their limits are conservative curated ones, marked in `origin`. **These limits should be reviewed by someone with food-safety expertise before launch.**
+> - Code compares the stated storage time with the limit ("…overnight (taken as at least 8 hours): longer than the limit of 2 hours") and adds it as a fact; the model only phrases the verdict. In a fridge during a power cut, the power-cut limit (4 hours) is used instead of the normal fridge limit.
+> - Guidance passages are **curated, paraphrased summaries** (6 documents, 34 chunks in `data/guidance/`), not the original FSSAI/WHO/ICMR-NIN documents; licences are still unchecked (open decision 4). Rule text and passages never name an authority; that stays in `origin`, like dataset names.
+> - Retrieval keeps the top 4 chunks scoring ≥ 0.65 and within 0.1 of the best match, tuned on bge-small scores (unrelated 0.4–0.55, on-topic 0.7–0.85). "Calories in 2 rotis" gets no passages; the rice question gets the Bacillus cereus passage plus close ones.
+> - The emergency (112/108) notice for `symptoms` was already added by the output gate in Phase 2; Phase 4 adds a test for the biryani example.
+> - **Token cost went up:** answer calls now use ~2.7–3.5K tokens (was ~1.5–1.8K) because of the rule facts and passages. With the 8K TPM limit on `gpt-oss-120b`, that is **~2 questions/minute** and **~60 questions/day** (TPD binds). The live run hit `budget_exceeded` once on the 3rd question within a minute, which was refused in code, recorded, and shown with a retry time. Options if this is too tight: fewer passages (`TOP_K`), a lower `reasoning_effort_answer`, or a paid Groq tier.
+> - Live run (6 questions): every answer had its verdict first, `unverified_number` and `unsupported_without_context` stayed at 0 warnings, and every `source` was null.
 
 **Goal:** food-safety answers are grounded in FSSAI-first rules, adjusted for Indian conditions, with semantic retrieval over guidance documents.
 
@@ -315,30 +338,31 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ### 4.1 Safety rules
 
-- [ ] Write `backend/data/safety_rules.yaml`: FSSAI first, with WHO and USDA FSIS used only for numbers FSSAI doesn't publish. Cover at least:
+- [x] Write `backend/data/safety_rules.yaml`: FSSAI first, with WHO and USDA FSIS used only for numbers FSSAI doesn't publish. Cover at least:
   - cooked rice, cooked dal and curries, milk and dairy, paneer, curd
   - raw and cooked chicken, fish, eggs
   - cut fruit, street-food chutneys
   - thawed meat, leftovers in general
-- [ ] Each rule has `max_duration_hours`, `location`, `state`, `safe_internal_temp_c` where relevant, and a `region_note` (heat above 32 °C → 1-hour limit; power-cut guidance for fridges).
-- [ ] `migrations/003_safety.sql`: `safety_rules`, `doc_chunks` + `CREATE EXTENSION vector` + HNSW index (§10.2).
-- [ ] `scripts/ingest/load_safety_rules.py`.
+- [x] Each rule has `max_duration_hours`, `location`, `state`, `safe_internal_temp_c` where relevant, and a `region_note` (heat above 32 °C → 1-hour limit; power-cut guidance for fridges).
+- [x] `migrations/003_safety.sql`: `safety_rules`, `doc_chunks` + `CREATE EXTENSION vector` + HNSW index (§10.2).
+- [x] `scripts/ingest/load_safety_rules.py`.
 
 ### 4.2 Retrieval
 
-- [ ] Collect guidance documents: FSSAI consumer handbooks / Eat Right India pages, WHO "Five Keys to Safer Food", ICMR-NIN Dietary Guidelines 2024. Check licenses.
-- [ ] `scripts/ingest/chunk_and_embed.py`: ~500-token chunks with 50-token overlap, embedded with `fastembed` (`BAAI/bge-small-en-v1.5`, 384 dimensions), stored in `doc_chunks` with a `category`.
-- [ ] `knowledge/retriever.py`: embed `intent_summary + foods`, run a pgvector cosine search filtered by category, keep the top 4.
-- [ ] Load the embedding model once at startup; `/api/health` reports it as ready.
-- [ ] Dockerfile downloads the fastembed model at build time.
+- [x] Collect guidance documents: FSSAI consumer handbooks / Eat Right India pages, WHO "Five Keys to Safer Food", ICMR-NIN Dietary Guidelines 2024 — as curated, paraphrased summaries in `data/guidance/*.md` (6 documents, 34 chunks).
+- [ ] Check licenses (open decision 4) and review the summaries against the original documents.
+- [x] `scripts/ingest/chunk_and_embed.py`: ~500-token chunks with 50-token overlap, embedded with `fastembed` (`BAAI/bge-small-en-v1.5`, 384 dimensions), stored in `doc_chunks` with a `category`.
+- [x] `knowledge/retriever.py`: embed `intent_summary + foods`, run a pgvector cosine search filtered by category, keep the top 4.
+- [x] Load the embedding model once at startup; `/api/health` reports it as ready.
+- [x] Dockerfile downloads the fastembed model at build time.
 
 ### 4.3 Pipeline integration
 
-- [ ] `knowledge/safety.py`: rule lookup by `(food_group, state, location)` from the analysis's storage context.
-- [ ] The orchestrator calls the safety lookup + retriever for `food_safety` and `mixed`, and the retriever for nutrition as well.
-- [ ] Output gate: emergency notice (112/108) when `risk_flags` contains `symptoms`; high-risk-group notice.
-- [ ] Soft check `unsupported_without_context` (§6.4).
-- [ ] Bump the prompt to `answer-v0.4`.
+- [x] `knowledge/safety.py`: rule lookup by `(food_group, state, location)` from the analysis's storage context.
+- [x] The orchestrator calls the safety lookup + retriever for `food_safety` and `mixed`, and the retriever for nutrition as well.
+- [x] Output gate: emergency notice (112/108) when `risk_flags` contains `symptoms`; high-risk-group notice.
+- [x] Soft check `unsupported_without_context` (§6.4).
+- [x] Bump the prompt to `answer-v0.4`.
 
 ### Tests
 - Unit: rule lookup matching, including partial matches (state unknown).
@@ -346,12 +370,12 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 - Manual: all food-safety examples below on the live URL.
 
 ### Exit criteria
-- [ ] "Can I eat cooked rice that was left outside overnight?" → the answer starts with a clear verdict ("Not recommended…") and mentions the hot-climate rule.
-- [ ] "How long can chicken be stored in the refrigerator?" → a specific limit taken from `safety_rules`.
-- [ ] "Milk was out during a power cut for 4 hours" → a conservative discard recommendation.
-- [ ] A question mentioning symptoms ("vomiting after eating biryani") → emergency notice in `notices`.
-- [ ] Mixed questions ("Is paneer healthy and how long does it last in the fridge?") cover both parts clearly.
-- [ ] The sources panel is still empty; every `source` is still `null`.
+- [x] "Can I eat cooked rice that was left outside overnight?" → the answer starts with a clear verdict ("Not recommended…") and mentions the hot-climate rule.
+- [x] "How long can chicken be stored in the refrigerator?" → a specific limit taken from `safety_rules`.
+- [x] "Milk was out during a power cut for 4 hours" → a conservative discard recommendation.
+- [x] A question mentioning symptoms ("vomiting after eating biryani") → emergency notice in `notices`.
+- [x] Mixed questions ("Is paneer healthy and how long does it last in the fridge?") cover both parts clearly.
+- [x] The sources panel is still empty; every `source` is still `null`.
 
 ---
 
@@ -483,7 +507,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 | FSSAI doesn't publish specific storage durations | Gaps in safety rules | Use WHO/USDA numbers with a `region_note` adjusting for Indian heat | 4 |
 | Model invents numbers | Wrong nutrition info | Numbers come from the database; `unverified_number` warnings; eval accuracy checks | 3, 5 |
 | Unsafe food-safety advice | User harm | Conservative prompt, curated rules, verdict checks in evals, emergency notices from code | 4, 5 |
-| Groq rate limits on the free tier | Errors under load | Rate limiting per IP, recorded `rate_limited` failures, upgrade tier if needed | 5 |
+| Groq rate limits on the free tier (~2 questions/min, ~60/day since Phase 4's longer answer prompt) | Errors under load | Per-model budget in code paces or refuses calls before Groq is hit (Phase 2); per-IP rate limiting (Phase 5); upgrade tier if needed | 2, 5 |
 | fastembed increases the container size or cold start | Slow deploys | Small model (bge-small); download at build time; health check waits for model load | 4 |
 
 ### Open decisions (from architecture §16)

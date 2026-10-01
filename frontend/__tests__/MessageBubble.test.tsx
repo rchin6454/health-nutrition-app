@@ -41,3 +41,76 @@ test("does not render raw HTML from the answer", () => {
   );
   expect(container.querySelector("img")).toBeNull();
 });
+
+const EMERGENCY =
+  "This may be a medical emergency. Call 112 (emergency) or 108 (ambulance) now, or go to the nearest hospital.";
+const HIGH_RISK =
+  "Pregnant women, infants and young children, older adults and people with weak immunity are more vulnerable.";
+
+test("renders the category badge", () => {
+  render(
+    <MessageBubble
+      item={{
+        kind: "assistant",
+        id: "b",
+        response: answerResponse({ category: "food_safety" }),
+      }}
+    />,
+  );
+  expect(screen.getByText("Food Safety")).toBeDefined();
+});
+
+test("renders notices below the answer, highlighting emergency notices", () => {
+  render(
+    <MessageBubble
+      item={{
+        kind: "assistant",
+        id: "n",
+        response: answerResponse({
+          notices: [
+            EMERGENCY,
+            HIGH_RISK,
+            "General information, not medical advice.",
+          ],
+        }),
+      }}
+    />,
+  );
+
+  const notices = screen.getByRole("list", { name: "Notices" });
+  const items = within(notices).getAllByRole("listitem");
+  // The disclaimer is left to the page footer.
+  expect(items.map((li) => li.textContent)).toEqual([EMERGENCY, HIGH_RISK]);
+  expect(screen.getByRole("alert").textContent).toBe(EMERGENCY);
+});
+
+test("the disclaimer alone renders no notices list", () => {
+  render(
+    <MessageBubble
+      item={{ kind: "assistant", id: "d", response: answerResponse() }}
+    />,
+  );
+  expect(screen.queryByRole("list", { name: "Notices" })).toBeNull();
+});
+
+test("renders a clarification as plain text without claims", () => {
+  render(
+    <MessageBubble
+      item={{
+        kind: "assistant",
+        id: "c",
+        response: answerResponse({
+          answer_type: "clarification",
+          category: "food_safety",
+          answer: "Which food do you mean, and how was it stored?",
+          claims: [],
+        }),
+      }}
+    />,
+  );
+  expect(screen.getByText("Needs more detail")).toBeDefined();
+  expect(
+    screen.getByText("Which food do you mean, and how was it stored?"),
+  ).toBeDefined();
+  expect(screen.queryByText("Claims")).toBeNull();
+});

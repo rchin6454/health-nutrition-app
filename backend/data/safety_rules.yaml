@@ -1,0 +1,560 @@
+# Curated food-safety rules → `safety_rules` + `safety_food_aliases` (architecture §10.2).
+#
+# Source priority: FSSAI first; WHO ("Five Keys to Safer Food") and USDA FSIS (Cold Food
+# Storage Chart, FoodKeeper, power-outage and safe-temperature guidance) only for numbers FSSAI
+# does not publish. Where no authority gives a number for an Indian food (paneer, curd, fresh
+# chutneys, cut fruit), the limit is a conservative curated one and `origin` says so.
+#
+# Every limit is on the cautious side of the published range (e.g. USDA's "3–4 days" becomes
+# 3 days), because home fridges in India are often warmer than 4 °C and power cuts are common.
+#
+# `guidance` and `region_note` reach the answer prompt, so they never name an authority;
+# `origin` is kept for audit only (like `Fact.origin`).
+#
+# Fields
+#   food_groups.<id>.label           name shown in facts
+#   food_groups.<id>.aliases         food names (normalized, word-matched) that map to the group
+#   food_groups.<id>.cooked_aliases  names that also say the food is cooked ("chicken curry")
+#   food_groups.<id>.generic         used only when no specific group matches
+#   rules[].state                    raw | cooked | thawed | null (applies to any state)
+#   rules[].location                 room_temp | fridge | freezer | null (handling, cooking)
+#   rules[].max_duration_hours       storage limit; null when no single limit applies
+#   rules[].hot_max_duration_hours   the stricter limit above about 32 °C (room temperature)
+#   rules[].safe_internal_temp_c     core temperature to cook or reheat to
+
+food_groups:
+  cooked_rice:
+    label: Cooked rice
+    aliases: [rice, chawal, bhaat, bhat, cooked rice, leftover rice]
+    cooked_aliases: [biryani, pulao, pulav, khichdi, fried rice, jeera rice, curd rice, lemon rice]
+  dal_curry:
+    label: Cooked dal, curry or sabzi
+    aliases: [dal, daal, dhal]
+    cooked_aliases:
+      [cooked dal, sambar, rasam, curry, sabzi, sabji, rajma, chole, chana masala, kadhi, gravy,
+       cooked vegetables]
+  milk:
+    label: Milk
+    aliases: [milk, doodh, dudh, boiled milk, packet milk, toned milk, loose milk, raw milk]
+  paneer:
+    label: Paneer
+    aliases: [paneer, cottage cheese, chhena, chenna]
+  curd:
+    label: Curd, raita and buttermilk
+    aliases: [curd, dahi, yogurt, yoghurt, raita, lassi, chaas, chhaas, buttermilk, shrikhand]
+  chicken:
+    label: Chicken
+    aliases: [chicken, murgh, murg, murgi, poultry]
+    cooked_aliases: [chicken curry, butter chicken, tandoori chicken, chicken tikka, chicken biryani]
+  fish:
+    label: Fish and seafood
+    aliases:
+      [fish, machli, machhli, meen, prawn, prawns, shrimp, jhinga, seafood, pomfret, rohu,
+       surmai, mackerel, bangda, sardine, crab]
+    cooked_aliases: [fish curry, fish fry, fried fish, prawn curry]
+  meat:
+    label: Mutton and other meat
+    aliases: [meat, mutton, goat, lamb, keema, mince, minced meat, pork, beef]
+    cooked_aliases: [mutton curry, rogan josh, seekh kebab, kebab]
+  eggs:
+    label: Eggs
+    aliases: [egg, eggs, anda, ande]
+    cooked_aliases: [boiled egg, boiled eggs, omelette, omelet, egg bhurji, bhurji, egg curry]
+  cut_fruit:
+    label: Cut fruit
+    aliases:
+      [cut fruit, cut fruits, fruit salad, fruit chaat, sliced fruit, peeled fruit, cut papaya,
+       cut watermelon, cut melon, cut mango, cut pineapple]
+  chutney_street_food:
+    label: Chutneys and street food
+    aliases:
+      [chutney, green chutney, mint chutney, coconut chutney, tamarind chutney, imli chutney,
+       pani puri, golgappa, gol gappa, puchka, pani puri water, bhel, bhel puri, chaat,
+       street food]
+  thawed_meat:
+    label: Thawed meat, chicken or fish
+    aliases: [thawed, defrosted, thawed meat, thawed chicken, thawed fish]
+  leftovers:
+    label: Leftover cooked food
+    generic: true
+    aliases: [leftovers, leftover, leftover food, cooked food, basi khana, baasi khana, tiffin]
+  power_cut:
+    # Matched from power-cut wording in the question, not from a food name.
+    label: Fridge and freezer during a power cut
+    aliases: []
+
+rules:
+  # --- Cooked rice ---
+  - id: cooked_rice_room_temp
+    food_group: cooked_rice
+    state: cooked
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Spores of Bacillus cereus survive cooking. At room temperature they grow and can form a
+      toxin that reheating does not destroy, so rice left out overnight should be thrown away,
+      even if it looks and smells fine.
+    region_note: >-
+      Indian kitchens are often above 32 °C, especially in summer, so count 1 hour. Cool rice
+      quickly by spreading it in a shallow container, then refrigerate it.
+    origin: WHO Five Keys to Safer Food (2-hour rule); USDA FSIS (1 hour above 32 °C)
+  - id: cooked_rice_fridge
+    food_group: cooked_rice
+    state: cooked
+    location: fridge
+    max_duration_hours: 24
+    safe_internal_temp_c: 74
+    guidance: >-
+      Refrigerate within 1 hour of cooking, eat within 1 day, and reheat only once, until
+      steaming hot all the way through.
+    region_note: >-
+      If a power cut left the fridge without power for more than 4 hours, throw the rice away.
+    origin: >-
+      UK Food Standards Agency / NHS rice advice (stricter than the general 3–4 day leftovers
+      rule); USDA FSIS reheating temperature
+  - id: cooked_rice_freezer
+    food_group: cooked_rice
+    state: cooked
+    location: freezer
+    max_duration_hours: 720
+    guidance: >-
+      Freeze in small portions within 1 hour of cooking. Thaw in the fridge and reheat until
+      steaming hot; do not refreeze.
+    origin: USDA FoodKeeper (cooked rice, freezer), lower bound
+
+  # --- Cooked dal, curries, sabzi ---
+  - id: dal_curry_room_temp
+    food_group: dal_curry
+    state: cooked
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Cooked dals, curries and sabzis are moist and often protein-rich, so bacteria grow quickly
+      at room temperature. Throw away curry or dal left out overnight.
+    region_note: >-
+      Above about 32 °C, count 1 hour. Dishes with coconut, curd, cream or khoya spoil fastest.
+    origin: WHO Five Keys to Safer Food (2-hour rule); USDA FSIS (1 hour above 32 °C)
+  - id: dal_curry_fridge
+    food_group: dal_curry
+    state: cooked
+    location: fridge
+    max_duration_hours: 72
+    safe_internal_temp_c: 74
+    guidance: >-
+      Cool quickly, keep covered in the fridge and eat within 3 days. Reheat only the portion
+      you will eat, until it boils or is steaming hot throughout.
+    origin: USDA FSIS leftovers (3–4 days; lower bound used)
+  - id: dal_curry_freezer
+    food_group: dal_curry
+    state: cooked
+    location: freezer
+    max_duration_hours: 1440
+    guidance: >-
+      Frozen dal and curry stay safe while frozen; eat within 2 months for best quality. Thaw
+      in the fridge and reheat until boiling.
+    origin: USDA FSIS Cold Food Storage Chart (soups and stews, 2–3 months)
+
+  # --- Milk ---
+  - id: milk_room_temp
+    food_group: milk
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Milk is highly perishable. Boiled or packet milk left out of the fridge for longer than
+      this should be thrown away, even if it smells fine.
+    region_note: >-
+      Above about 32 °C, count 1 hour. After boiling, cool the milk quickly and refrigerate it.
+    origin: USDA FSIS (perishables, 2 hours; 1 hour above 32 °C)
+  - id: milk_fridge
+    food_group: milk
+    location: fridge
+    max_duration_hours: 48
+    guidance: >-
+      Keep boiled or opened packet milk covered in the coldest part of the fridge (not the
+      door) and use it within 2 days. For unopened packets, follow the use-by date.
+    region_note: >-
+      During a power cut a closed fridge keeps milk cold for about 4 hours; milk that was
+      above 4 °C for more than 2 hours should be thrown away.
+    origin: >-
+      Conservative curated limit (shorter than USDA FoodKeeper's 7 days, for warmer home
+      fridges); USDA FSIS power-outage guidance
+  - id: milk_raw_handling
+    food_group: milk
+    state: raw
+    guidance: >-
+      Loose (unpasteurised) milk should be brought to a rolling boil before drinking, then
+      cooled and refrigerated within 2 hours (1 hour in hot weather).
+    origin: FSSAI consumer guidance; WHO Five Keys to Safer Food (safe raw materials)
+
+  # --- Paneer ---
+  - id: paneer_room_temp
+    food_group: paneer
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Paneer is a moist fresh cheese and spoils quickly at room temperature.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (perishables, 2 hours; 1 hour above 32 °C)
+  - id: paneer_fridge
+    food_group: paneer
+    location: fridge
+    max_duration_hours: 72
+    guidance: >-
+      Keep paneer in an airtight container, or under water that is changed daily. Use homemade
+      or opened paneer within 2–3 days, and unopened packets by the use-by date. Throw it away
+      if it is slimy, sour-smelling or has spots of mould.
+    origin: >-
+      Conservative curated limit (no FSSAI, WHO or USDA number for paneer; shorter than USDA
+      FoodKeeper's limit for fresh soft cheese)
+
+  # --- Curd, raita, buttermilk ---
+  - id: curd_room_temp
+    food_group: curd
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Setting curd at room temperature is normal. Once it has set, refrigerate it. Raita,
+      lassi and chaas left out longer than this should be thrown away.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (perishables, 2 hours; 1 hour above 32 °C)
+  - id: curd_fridge
+    food_group: curd
+    location: fridge
+    max_duration_hours: 72
+    guidance: >-
+      Keep homemade curd covered in the fridge and eat it within 3 days; raita made with raw
+      vegetables within 1 day. Throw it away if it smells off, is pink or has mould.
+    origin: Conservative curated limit (no FSSAI, WHO or USDA number for homemade curd)
+
+  # --- Chicken ---
+  - id: chicken_raw_fridge
+    food_group: chicken
+    state: raw
+    location: fridge
+    max_duration_hours: 48
+    guidance: >-
+      Cook raw chicken within 1–2 days. Keep it in a sealed container on the bottom shelf so
+      its juices cannot drip onto other food.
+    region_note: >-
+      If your fridge often runs warmer than 4 °C or there are frequent power cuts, cook it
+      within 1 day, or freeze it.
+    origin: USDA FSIS Cold Food Storage Chart (raw poultry, 1–2 days)
+  - id: chicken_raw_freezer
+    food_group: chicken
+    state: raw
+    location: freezer
+    max_duration_hours: 6480
+    guidance: >-
+      Chicken kept frozen at −18 °C stays safe; eat within 9 months for best quality. Thaw it
+      in the fridge, never on the counter.
+    origin: USDA FSIS Cold Food Storage Chart (raw poultry pieces, 9 months)
+  - id: chicken_raw_room_temp
+    food_group: chicken
+    state: raw
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Do not keep raw chicken out of the fridge longer than this, including while thawing or
+      marinating; marinate in the fridge.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (2-hour rule; 1 hour above 32 °C)
+  - id: chicken_cooked_fridge
+    food_group: chicken
+    state: cooked
+    location: fridge
+    max_duration_hours: 72
+    safe_internal_temp_c: 74
+    guidance: >-
+      Refrigerate cooked chicken within 2 hours and eat it within 3 days. Reheat until steaming
+      hot all the way through.
+    origin: USDA FSIS Cold Food Storage Chart (cooked poultry, 3–4 days; lower bound)
+  - id: chicken_cooked_room_temp
+    food_group: chicken
+    state: cooked
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: Throw away cooked chicken dishes left out longer than this.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: WHO Five Keys to Safer Food (2-hour rule); USDA FSIS (1 hour above 32 °C)
+  - id: chicken_cooking
+    food_group: chicken
+    safe_internal_temp_c: 74
+    guidance: >-
+      Cook chicken until the thickest part reaches 74 °C: the juices run clear and no pink
+      remains. Do not wash raw chicken; splashing spreads bacteria around the kitchen.
+    origin: USDA FSIS safe minimum internal temperatures; WHO Five Keys (cook thoroughly)
+
+  # --- Fish and seafood ---
+  - id: fish_raw_fridge
+    food_group: fish
+    state: raw
+    location: fridge
+    max_duration_hours: 48
+    guidance: >-
+      Cook raw fish and prawns within 1–2 days; keep them sealed on the bottom shelf.
+    region_note: >-
+      Buy fish that is kept on ice. In hot weather, refrigerate it within 1 hour of buying and
+      cook it the same day if you can.
+    origin: USDA FSIS Cold Food Storage Chart (fresh fish and shellfish, 1–2 days)
+  - id: fish_raw_freezer
+    food_group: fish
+    state: raw
+    location: freezer
+    max_duration_hours: 2160
+    guidance: >-
+      Frozen fish stays safe at −18 °C; eat oily fish (mackerel, sardine) within 3 months for
+      best quality.
+    origin: USDA FSIS Cold Food Storage Chart (fatty fish, 2–3 months)
+  - id: fish_room_temp
+    food_group: fish
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Raw or cooked fish should not be left out longer than this. Fish that smells sour or of
+      ammonia should be thrown away.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (2-hour rule; 1 hour above 32 °C)
+  - id: fish_cooked_fridge
+    food_group: fish
+    state: cooked
+    location: fridge
+    max_duration_hours: 72
+    guidance: Eat cooked fish within 3 days and reheat until steaming hot.
+    origin: USDA FSIS Cold Food Storage Chart (cooked fish, 3–4 days; lower bound)
+  - id: fish_cooking
+    food_group: fish
+    safe_internal_temp_c: 63
+    guidance: >-
+      Cook fish until the flesh is opaque and flakes easily (63 °C in the centre); prawns until
+      pink and firm.
+    origin: USDA FSIS safe minimum internal temperatures
+
+  # --- Mutton and other meat ---
+  - id: meat_raw_fridge
+    food_group: meat
+    state: raw
+    location: fridge
+    max_duration_hours: 72
+    guidance: >-
+      Cook raw mutton pieces within 3 days, and keema (minced meat) within 1–2 days. Keep raw
+      meat sealed on the bottom shelf.
+    region_note: >-
+      With a warm fridge or frequent power cuts, cook or freeze meat within 1 day.
+    origin: USDA FSIS Cold Food Storage Chart (steaks and chops 3–5 days, ground meat 1–2 days)
+  - id: meat_room_temp
+    food_group: meat
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: Raw or cooked meat should not be left out longer than this.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (2-hour rule; 1 hour above 32 °C)
+  - id: meat_cooked_fridge
+    food_group: meat
+    state: cooked
+    location: fridge
+    max_duration_hours: 72
+    safe_internal_temp_c: 74
+    guidance: Eat cooked meat dishes within 3 days and reheat until steaming hot.
+    origin: USDA FSIS leftovers (3–4 days; lower bound)
+  - id: meat_cooking
+    food_group: meat
+    safe_internal_temp_c: 71
+    guidance: >-
+      Cook keema and kebabs made from minced meat to 71 °C, with no pink left inside. Whole
+      pieces of mutton should be cooked through until tender.
+    origin: USDA FSIS safe minimum internal temperatures (ground meat 71 °C)
+
+  # --- Eggs ---
+  - id: eggs_raw_fridge
+    food_group: eggs
+    state: raw
+    location: fridge
+    max_duration_hours: 504
+    guidance: >-
+      Keep eggs in their tray in the main part of the fridge (not the door) and use them within
+      3 weeks. Throw away cracked or very dirty eggs.
+    origin: USDA FSIS Cold Food Storage Chart (raw eggs in shell, 3–5 weeks; lower bound)
+  - id: eggs_raw_room_temp
+    food_group: eggs
+    state: raw
+    location: room_temp
+    guidance: >-
+      Eggs bought unrefrigerated are best moved to the fridge soon after purchase. Once
+      refrigerated, do not leave them out for more than 2 hours: condensation on the shell
+      helps bacteria get in.
+    region_note: >-
+      Eggs kept outside spoil faster in hot weather. Throw away any egg that smells bad when
+      cracked.
+    origin: USDA FSIS egg storage guidance
+  - id: eggs_cooked_fridge
+    food_group: eggs
+    state: cooked
+    location: fridge
+    max_duration_hours: 72
+    guidance: >-
+      Eat egg dishes (bhurji, egg curry) within 3 days. Hard-boiled eggs kept in their shell
+      last up to 1 week.
+    origin: USDA FSIS Cold Food Storage Chart (egg dishes 3–4 days; hard-cooked eggs 1 week)
+  - id: eggs_cooked_room_temp
+    food_group: eggs
+    state: cooked
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: Throw away egg dishes and boiled eggs left out longer than this.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (2-hour rule; 1 hour above 32 °C)
+  - id: eggs_cooking
+    food_group: eggs
+    safe_internal_temp_c: 71
+    guidance: >-
+      Cook eggs until the white and yolk are firm; egg dishes to 71 °C. Pregnant women, young
+      children and older adults should avoid raw or runny eggs.
+    origin: USDA FSIS safe minimum internal temperatures (egg dishes 71 °C)
+
+  # --- Cut fruit ---
+  - id: cut_fruit_room_temp
+    food_group: cut_fruit
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Once cut, fruit is perishable: bacteria from the rind, knife or hands can grow on the
+      moist flesh. Avoid pre-cut fruit sold uncovered.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS (cut fruit is perishable; 2-hour rule, 1 hour above 32 °C)
+  - id: cut_fruit_fridge
+    food_group: cut_fruit
+    location: fridge
+    max_duration_hours: 24
+    guidance: Cover cut fruit, refrigerate it and eat it within 1 day.
+    origin: Conservative curated limit (general perishable-food rules)
+  - id: cut_fruit_handling
+    food_group: cut_fruit
+    guidance: >-
+      Wash whole fruit under clean running water before cutting, including melons and papayas
+      whose rind you do not eat, and use a clean knife and board.
+    origin: WHO Five Keys to Safer Food (safe water and raw materials)
+
+  # --- Chutneys and street food ---
+  - id: chutney_room_temp
+    food_group: chutney_street_food
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Fresh chutneys (coriander, mint, coconut) and pani-puri water are made with raw herbs and
+      water, so they spoil quickly. Throw away fresh chutney left out longer than this.
+    region_note: Above about 32 °C, and in the monsoon, count 1 hour.
+    origin: USDA FSIS (perishables, 2 hours; 1 hour above 32 °C)
+  - id: chutney_fridge
+    food_group: chutney_street_food
+    location: fridge
+    max_duration_hours: 48
+    guidance: >-
+      Keep homemade fresh chutney in a clean, covered jar in the fridge and use it within
+      2 days; coconut chutney within 1 day.
+    origin: Conservative curated limit (no FSSAI, WHO or USDA number for fresh chutneys)
+  - id: street_food_handling
+    food_group: chutney_street_food
+    guidance: >-
+      Choose freshly cooked, piping-hot street food from stalls that look clean and keep food
+      covered. Be careful with raw salads, pre-cut fruit, uncovered chutneys, pani-puri water
+      and ice of unknown origin, especially during the monsoon.
+    origin: FSSAI Clean Street Food / Eat Right India consumer guidance
+
+  # --- Thawed meat, chicken or fish ---
+  - id: thawed_fridge
+    food_group: thawed_meat
+    state: thawed
+    location: fridge
+    max_duration_hours: 24
+    guidance: >-
+      Cook meat, chicken or fish within 1 day of thawing it in the fridge. If it was thawed in
+      cold water or in the microwave, cook it straight away.
+    origin: USDA FSIS safe thawing guidance (1–2 days after fridge thawing; lower bound)
+  - id: thawed_room_temp
+    food_group: thawed_meat
+    state: thawed
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Never thaw meat on the counter: the outside warms up while the centre is still frozen.
+      Thaw in the fridge, in cold water changed every 30 minutes, or in the microwave.
+    region_note: Above about 32 °C, count 1 hour.
+    origin: USDA FSIS safe thawing guidance
+  - id: thawed_refreeze
+    food_group: thawed_meat
+    state: thawed
+    location: freezer
+    guidance: >-
+      Meat thawed in the fridge can be refrozen, with some loss of quality. Meat thawed in
+      cold water, in the microwave or at room temperature must be cooked before it is frozen
+      again.
+    origin: USDA FSIS safe thawing guidance
+
+  # --- Leftovers in general ---
+  - id: leftovers_room_temp
+    food_group: leftovers
+    state: cooked
+    location: room_temp
+    max_duration_hours: 2
+    hot_max_duration_hours: 1
+    guidance: >-
+      Bacteria grow fastest between 5 °C and 60 °C. Cooked food left out longer than this
+      should be thrown away; reheating does not make it safe.
+    region_note: >-
+      Above about 32 °C, count 1 hour. Food left out overnight in an Indian kitchen should not
+      be eaten.
+    origin: WHO Five Keys to Safer Food (2-hour rule, 5–60 °C); USDA FSIS (1 hour above 32 °C)
+  - id: leftovers_fridge
+    food_group: leftovers
+    state: cooked
+    location: fridge
+    max_duration_hours: 72
+    safe_internal_temp_c: 74
+    guidance: >-
+      Refrigerate leftovers within 2 hours in shallow covered containers and eat them within
+      3 days. Reheat until steaming hot throughout, and only once.
+    origin: USDA FSIS leftovers (3–4 days; lower bound, 74 °C reheating)
+  - id: leftovers_freezer
+    food_group: leftovers
+    state: cooked
+    location: freezer
+    max_duration_hours: 1440
+    guidance: >-
+      Frozen leftovers stay safe while frozen; eat within 2 months for best quality. Thaw in
+      the fridge.
+    origin: USDA FSIS leftovers (freezer, 2–6 months; lower bound)
+
+  # --- Power cuts ---
+  - id: power_cut_fridge
+    food_group: power_cut
+    location: fridge
+    max_duration_hours: 4
+    guidance: >-
+      Keep the fridge door shut: a closed fridge keeps food cold for about 4 hours. After that,
+      throw away perishable food (milk, curd, paneer, cooked food, meat, fish, eggs, cut fruit)
+      that has been above 4 °C for more than 2 hours.
+    region_note: >-
+      Where power cuts are frequent, keep a fridge thermometer, and keep bottles of water
+      frozen to help the fridge stay cold longer.
+    origin: USDA FSIS power-outage guidance
+  - id: power_cut_freezer
+    food_group: power_cut
+    location: freezer
+    max_duration_hours: 48
+    guidance: >-
+      A full, closed freezer holds its temperature for about 48 hours (24 hours if half full).
+      Food that still has ice crystals or is at 4 °C or below can be refrozen or cooked.
+    origin: USDA FSIS power-outage guidance

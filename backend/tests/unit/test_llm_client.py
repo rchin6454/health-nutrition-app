@@ -79,3 +79,69 @@ def test_client_has_no_retries_and_30s_timeout(monkeypatch: pytest.MonkeyPatch) 
     groq_client = client._get_client()
     assert groq_client.max_retries == 0
     assert groq_client.timeout == 30.0
+
+
+async def test_sends_token_cap_and_reasoning_effort(fake_groq: FakeGroq) -> None:
+    fake_groq.outcome = "{}"
+    await structured_call(
+        model="m",
+        messages=[{"role": "user", "content": "hi"}],
+        schema_name="llm_answer",
+        schema=to_groq_strict(LLMAnswer),
+        max_completion_tokens=1500,
+        reasoning_effort="low",
+    )
+    [call] = fake_groq.calls
+    assert call["max_completion_tokens"] == 1500
+    assert call["reasoning_effort"] == "low"
+
+
+async def test_real_usage_and_groq_headers_update_the_budget(fake_groq: FakeGroq) -> None:
+    fake_groq.outcome = "{}"
+    fake_groq.total_tokens = 1234
+    fake_groq.headers = {"x-ratelimit-remaining-tokens": "10", "x-ratelimit-reset-tokens": "30s"}
+    await _call()
+
+    assert client.budget_for("m").usage()["tokens_minute"] == 1234
+    # Groq says only 10 tokens are left this minute, 30 s away: refused without calling Groq.
+    with pytest.raises(LLMCallError) as info:
+        await _call()
+    assert info.value.kind == "budget_exceeded"
+    assert "tpm" in info.value.detail
+    assert info.value.retry_after_s == pytest.approx(30, abs=1)
+    assert len(fake_groq.calls) == 1
+
+
+async def test_exhausted_budget_never_calls_groq(fake_groq: FakeGroq) -> None:
+    fake_groq.outcome = "{}"
+    client.budget_for("m").seed([(60.0 * 60, 200_000)])  # today's tokens are used up
+
+    with pytest.raises(LLMCallError) as info:
+        await _call()
+    assert info.value.kind == "budget_exceeded"
+    assert "tpd" in info.value.detail
+    assert fake_groq.calls == []
+
+
+async def test_429_retry_after_puts_the_model_in_cooldown(fake_groq: FakeGroq) -> None:
+    response = httpx.Response(429, request=_REQ, headers={"retry-after": "42"})
+    fake_groq.outcome = groq.RateLimitError("slow down", response=response, body=None)
+
+    with pytest.raises(LLMCallError) as info:
+        await _call()
+    assert info.value.kind == "rate_limited"
+    assert info.value.retry_after_s == 42
+
+    # The next call is refused in code instead of hitting Groq again.
+    with pytest.raises(LLMCallError) as info:
+        await _call()
+    assert info.value.kind == "budget_exceeded"
+    assert "cooldown" in info.value.detail
+    assert len(fake_groq.calls) == 1
+
+
+async def test_budgets_are_per_model(fake_groq: FakeGroq) -> None:
+    fake_groq.outcome = "{}"
+    client.budget_for("other-model").seed([(60.0, 200_000)])
+    await _call()  # model "m" is unaffected
+    assert len(fake_groq.calls) == 1

@@ -1,0 +1,101 @@
+# Indian household measures → grams (architecture §1.3, §5.4 step 3).
+#
+# `generic` applies to any food; `foods` overrides it for one food ID. Each entry is the weight
+# of ONE unit of the measure, plus the note shown to the user as the assumption behind it.
+# Countable foods use the measure "piece" ("2 rotis", "3 idlis", "1 egg" are all pieces).
+#
+# Raw-ingredient entries (IFCT foods are raw) give the raw weight that one cooked serving is
+# made from, following ICMR-NIN serving sizes (Dietary Guidelines for Indians, 2024):
+# cereals and pulses 30 g raw per serving, vegetables 100 g raw, fruit 100 g.
+# Piece weights for cooked items are USDA FNDDS portion weights for those dishes.
+
+generic:
+  katori: {grams: 150, note: "1 katori is taken as about 150 ml, roughly 150 g of a cooked dish."}
+  cup: {grams: 200, note: "1 cup is taken as about 200 ml."}
+  glass: {grams: 250, note: "1 glass is taken as about 250 ml."}
+  tbsp: {grams: 15, note: "1 tablespoon is taken as about 15 g."}
+  tsp: {grams: 5, note: "1 teaspoon is taken as about 5 g."}
+  handful: {grams: 30, note: "1 handful is taken as about 30 g."}
+
+foods:
+  # --- Cooked staples ---
+  usda:169757: # cooked white rice
+    katori: {grams: 150, note: "1 katori of cooked rice is taken as about 150 g."}
+    cup: {grams: 158, note: "1 cup of cooked rice is taken as about 158 g."}
+  usda:169704: # cooked brown rice
+    katori: {grams: 150, note: "1 katori of cooked brown rice is taken as about 150 g."}
+  usda:2707427: # dal
+    katori: {grams: 150, note: "1 katori of cooked dal is taken as about 150 g."}
+  usda:2707430: # sambar
+    katori: {grams: 150, note: "1 katori of sambar is taken as about 150 g."}
+  usda:2708985: # vegetable biryani
+    cup: {grams: 172, note: "1 cup of biryani is taken as about 172 g."}
+
+  # --- Countable cooked items (FNDDS portion weights) ---
+  usda:2707713: # roti
+    piece: {grams: 40, note: "1 medium roti (about 7 inches across) is taken as about 40 g."}
+  usda:2707715: # paratha
+    piece: {grams: 70, note: "1 plain paratha is taken as about 70 g."}
+  usda:2707714: # puri
+    piece: {grams: 36, note: "1 puri is taken as about 36 g."}
+  usda:2708346: # idli
+    piece: {grams: 38, note: "1 idli is taken as about 38 g."}
+  usda:2708347: # dosa
+    piece: {grams: 80, note: "1 medium plain dosa is taken as about 80 g."}
+  usda:2709129: # masala dosa
+    piece: {grams: 267, note: "1 medium masala dosa with filling is taken as about 267 g."}
+  usda:2709130: # vada
+    piece: {grams: 30, note: "1 vada is taken as about 30 g."}
+  usda:2708730: # samosa
+    piece: {grams: 100, note: "1 regular samosa is taken as about 100 g."}
+  usda:2710066: # pakora
+    piece: {grams: 12, note: "1 pakora is taken as about 12 g."}
+  usda:174924: # white bread
+    slice: {grams: 25, note: "1 slice of bread is taken as about 25 g."}
+  usda:172688: # brown bread
+    slice: {grams: 32, note: "1 slice of whole wheat bread is taken as about 32 g."}
+
+  # --- Raw cereals: 1 katori cooked ≈ 50 g raw rice; 1 serving = 30 g raw ---
+  ifct:A015: # rice, raw, milled
+    katori: {grams: 50, note: "1 katori (about 150 g) of cooked rice is made from about 50 g of raw rice; values are for that raw amount."}
+  ifct:A013: # rice, raw, brown
+    katori: {grams: 50, note: "1 katori (about 150 g) of cooked brown rice is made from about 50 g of raw rice; values are for that raw amount."}
+  ifct:A011: # poha
+    katori: {grams: 30, note: "1 katori of cooked poha is made from about 30 g of dry poha; values are for that dry amount."}
+  ifct:A021: # dalia
+    katori: {grams: 30, note: "1 katori of cooked dalia is made from about 30 g of dry dalia; values are for that dry amount."}
+  ifct:A022: # suji
+    katori: {grams: 30, note: "1 katori of cooked suji (upma or halwa) is made from about 30 g of dry suji; values are for that dry amount."}
+
+  # --- Raw pulses: 1 katori cooked dal ≈ 30 g raw (ICMR-NIN serving) ---
+  ifct:B001: {katori: {grams: 30, note: "1 katori of cooked dal is made from about 30 g of raw dal; values are for that raw amount."}}
+  ifct:B003: {katori: {grams: 30, note: "1 katori of cooked dal is made from about 30 g of raw dal; values are for that raw amount."}}
+  ifct:B010: {katori: {grams: 30, note: "1 katori of cooked dal is made from about 30 g of raw dal; values are for that raw amount."}}
+  ifct:B013: {katori: {grams: 30, note: "1 katori of cooked dal is made from about 30 g of raw dal; values are for that raw amount."}}
+  ifct:B021: {katori: {grams: 30, note: "1 katori of cooked dal is made from about 30 g of raw dal; values are for that raw amount."}}
+  ifct:B002: {katori: {grams: 30, note: "1 katori of cooked chana is made from about 30 g of raw chana; values are for that raw amount."}}
+  ifct:B011: {katori: {grams: 30, note: "1 katori of cooked moong is made from about 30 g of raw moong; values are for that raw amount."}}
+  ifct:B014: {katori: {grams: 30, note: "1 katori of cooked masoor is made from about 30 g of raw masoor; values are for that raw amount."}}
+  ifct:B020: {katori: {grams: 30, note: "1 katori of cooked rajma is made from about 30 g of raw rajma; values are for that raw amount."}}
+
+  # --- Raw vegetables: 1 katori cooked sabzi ≈ 100 g raw (ICMR-NIN serving) ---
+  ifct:C033: {katori: {grams: 100, note: "1 katori of cooked palak is taken as about 100 g of raw spinach leaves; values are for that raw amount."}}
+  ifct:C020: {katori: {grams: 100, note: "1 katori of cooked methi is taken as about 100 g of raw leaves; values are for that raw amount."}}
+  ifct:C002: {katori: {grams: 100, note: "1 katori of cooked amaranth is taken as about 100 g of raw leaves; values are for that raw amount."}}
+  ifct:C026: {katori: {grams: 100, note: "1 katori of sarson saag is taken as about 100 g of raw leaves; values are for that raw amount."}}
+  ifct:C008: {katori: {grams: 100, note: "1 katori of cooked bathua is taken as about 100 g of raw leaves; values are for that raw amount."}}
+  ifct:C015: {katori: {grams: 100, note: "1 katori of cooked cabbage is taken as about 100 g of raw cabbage; values are for that raw amount."}}
+  ifct:D056: {katori: {grams: 100, note: "1 katori of cooked bhindi is taken as about 100 g of raw okra; values are for that raw amount."}}
+  ifct:D031: {katori: {grams: 100, note: "1 katori of cooked baingan is taken as about 100 g of raw brinjal; values are for that raw amount."}}
+  ifct:D036: {katori: {grams: 100, note: "1 katori of cooked cauliflower is taken as about 100 g raw; values are for that raw amount."}}
+  ifct:D061: {katori: {grams: 100, note: "1 katori of cooked peas is taken as about 100 g of raw peas; values are for that raw amount."}}
+  ifct:D049: {katori: {grams: 100, note: "1 katori of cooked beans is taken as about 100 g raw; values are for that raw amount."}}
+  ifct:D004: {katori: {grams: 100, note: "1 katori of cooked karela is taken as about 100 g raw; values are for that raw amount."}}
+  ifct:D007: {katori: {grams: 100, note: "1 katori of cooked lauki is taken as about 100 g raw; values are for that raw amount."}}
+  ifct:F006: {katori: {grams: 100, note: "1 katori of cooked potato is taken as about 100 g of raw potato; values are for that raw amount."}}
+
+  # --- Countable raw foods ---
+  ifct:M001: {piece: {grams: 50, note: "1 medium egg is taken as about 50 g without the shell."}}
+  ifct:M004: {piece: {grams: 50, note: "1 medium boiled egg is taken as about 50 g without the shell."}}
+  ifct:E012: {piece: {grams: 100, note: "1 medium banana is taken as about 100 g without the peel."}}
+  ifct:E001: {piece: {grams: 150, note: "1 medium apple is taken as about 150 g edible portion."}}

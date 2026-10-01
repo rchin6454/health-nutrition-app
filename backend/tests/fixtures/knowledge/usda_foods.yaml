@@ -1,0 +1,6 @@
+# The subset of data/usda_foods.yaml present in tests/fixtures/knowledge/usda/.
+foods:
+  - {fdc_id: 2707713, name: "Roti / chapati", state: cooked, diet: veg, food_group: Breads}
+  - {fdc_id: 2708346, name: "Idli", state: cooked, diet: veg, food_group: Breakfast dishes}
+  - {fdc_id: 169757, name: "Rice, white, cooked", state: cooked, diet: veg, food_group: Cooked cereals}
+  - {fdc_id: 171284, name: "Curd (dahi), whole milk", state: null, diet: veg, food_group: Milk products}

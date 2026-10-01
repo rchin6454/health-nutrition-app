@@ -6,8 +6,8 @@ from uuid import uuid4
 from fastapi import APIRouter
 
 from app.failures import Stage, record_failure
-from app.pipeline.answer import HISTORY_TURNS
 from app.pipeline.orchestrator import run_turn
+from app.pipeline.prompt_builder import HISTORY_TURNS
 from app.prompts import PROMPT_VERSION
 from app.responses import build_error_response
 from app.schemas.answer import ChatResponse
@@ -41,7 +41,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
     try:
         await store.upsert_conversation(conversation_id, title=message)
         history = await store.load_recent(conversation_id, HISTORY_TURNS)
-        await store.add_message(
+        user_message_id = await store.add_message(
             conversation_id=conversation_id,
             request_id=request_id,
             role="user",
@@ -61,6 +61,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
         return await fail("generation", "unhandled_exception", exc)
 
     try:
+        if turn.analysis is not None:
+            await store.set_analysis(user_message_id, turn.analysis.model_dump(mode="json"))
         await store.add_message(
             conversation_id=conversation_id,
             request_id=request_id,
@@ -70,6 +72,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
             prompt_version=turn.prompt_version,
             latency_ms=turn.latency_ms,
             usage=turn.usage,
+            context_snapshot=turn.context.model_dump(mode="json") if turn.context else None,
         )
     except Exception as exc:
         # Returning an answer that reloads can't restore would desync UI and database.

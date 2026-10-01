@@ -1,10 +1,12 @@
 """Validation of model output (architecture §6.4). Checks and reports; never repairs."""
 
+import re
 from dataclasses import dataclass
 
 from pydantic import ValidationError
 
 from app.schemas.answer import LLMAnswer
+from app.schemas.context import ContextBundle
 
 MAX_ANSWER_CHARS = 1500
 MAX_CLAIMS = 8
@@ -69,3 +71,83 @@ def check_invariants(answer: LLMAnswer) -> ValidationFailure | None:
                 f"claims[{i}] has {len(claim.text)} chars (max {MAX_CLAIM_CHARS})",
             )
     return None
+
+
+# --- Soft checks: recorded as warnings; the response is returned unchanged ---
+
+_NUMBER = r"\d+(?:\.\d+)?"
+# A number followed by a nutrient unit: "18.9 g", "258 kcal", "3mg". Storage times and
+# temperatures ("2 hours", "32 °C") are not nutrient numbers.
+_NUTRIENT_NUMBER = re.compile(
+    rf"({_NUMBER})\s*(?:g|gm|gms|grams?|mg|mcg|µg|ug|kcal|calories|cal|kj)\b", re.IGNORECASE
+)
+_THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
+# Rounding the model may do to a fact's value: 18.86 → 18.9 or 19, 2.95 → 3.
+_RELATIVE_TOLERANCE = 0.02
+_ABSOLUTE_TOLERANCE = 0.051
+
+
+def _numbers(text: str) -> list[float]:
+    return [float(n) for n in re.findall(_NUMBER, _THOUSANDS.sub("", text))]
+
+
+def unverified_numbers(answer: LLMAnswer, context: ContextBundle, question: str) -> list[str]:
+    """Nutrient numbers in claims that match no number in the context or the question.
+
+    Returns one "claims[i]: <number with unit>" entry per unverified number.
+    """
+    known = _numbers(question)
+    for fact in context.facts:
+        known += _numbers(fact.content)
+    for passage in context.passages:
+        known += _numbers(passage.text)
+    for text in context.assumptions:
+        known += _numbers(text)
+
+    def verified(value: float) -> bool:
+        return any(
+            abs(value - k) <= max(_RELATIVE_TOLERANCE * abs(k), _ABSOLUTE_TOLERANCE) for k in known
+        )
+
+    found = []
+    for i, claim in enumerate(answer.claims):
+        text = _THOUSANDS.sub("", claim.text)
+        for match in _NUTRIENT_NUMBER.finditer(text):
+            if _is_basis(text, match.start()):
+                continue
+            if not verified(float(match.group(1))):
+                found.append(f"claims[{i}]: {match.group(0)}")
+    return found
+
+
+def _is_basis(text: str, start: int) -> bool:
+    """ "per 100 g" is the reference amount a value is given for, not a nutrient number."""
+    return text[:start].rstrip().lower().endswith("per")
+
+
+# Wording that tells the user the answer is not backed by verified reference data. The answer
+# prompt asks for one such sentence whenever <context> is empty.
+_HEDGE = re.compile(
+    r"could\s*n[o']t\s+(?:be\s+)?(?:verif|check|confirm|find)|"
+    r"can\s*n[o']t\s+(?:be\s+)?(?:verif|check|confirm)|"
+    r"(?:not|un)\s*(?:been\s+)?(?:verified|checked|confirmed)|unverified|"
+    r"no\s+verified|not\s+able\s+to\s+(?:verify|check|confirm)|"
+    r"unable\s+to\s+(?:verify|check|confirm)|approximate",
+    re.IGNORECASE,
+)
+
+
+def unsupported_without_context(answer: LLMAnswer, context: ContextBundle | None) -> str | None:
+    """With no facts or passages, the answer must say it could not be verified (§6.4).
+
+    Returns a description of the problem, or None when the context was not empty or the answer
+    hedges.
+    """
+    if context is not None and not context.is_empty:
+        return None
+    if _HEDGE.search(answer.answer):
+        return None
+    return (
+        f"no verified context, and the answer states {len(answer.claims)} claim(s) without "
+        "saying they could not be verified"
+    )

@@ -1,34 +1,33 @@
-"""Model call 2: answer generation (Phase 1: the only model call)."""
+"""Model call 2: answer generation."""
 
 from app.config import get_settings
-from app.llm.client import ChatMessage, LLMResult, structured_call
+from app.llm.client import LLMResult, structured_call
 from app.llm.strict_schema import to_groq_strict
-from app.prompts import ANSWER_SYSTEM_PROMPT
+from app.pipeline.prompt_builder import build_answer_messages
+from app.schemas.analysis import QuestionAnalysis
 from app.schemas.answer import LLMAnswer
+from app.schemas.context import ContextBundle
 from app.store.conversations import StoredMessage
 
-HISTORY_TURNS = 6
-
 LLM_ANSWER_SCHEMA = to_groq_strict(LLMAnswer)
+# Hard cap on reasoning + JSON (observed 530-740). Hitting it truncates the JSON, which is
+# recorded as a validation failure, never repaired.
+MAX_COMPLETION_TOKENS = 2500
 
 
-def build_messages(question: str, history: list[StoredMessage]) -> list[ChatMessage]:
-    """System prompt + recent turns (answer text only) + the tagged user question."""
-    messages: list[ChatMessage] = [{"role": "system", "content": ANSWER_SYSTEM_PROMPT}]
-    for msg in history:
-        if msg.role == "user":
-            messages.append({"role": "user", "content": str(msg.content.get("text", ""))})
-        elif msg.content.get("answer_type") != "error":
-            messages.append({"role": "assistant", "content": str(msg.content.get("answer", ""))})
-    messages.append({"role": "user", "content": f"<user_question>\n{question}\n</user_question>"})
-    return messages
-
-
-async def generate_answer(question: str, history: list[StoredMessage]) -> LLMResult:
-    """Raises `LLMCallError` on any Groq failure."""
+async def generate_answer(
+    question: str,
+    history: list[StoredMessage],
+    analysis: QuestionAnalysis,
+    context: ContextBundle | None = None,
+) -> LLMResult:
+    """Raises `LLMCallError` on any Groq failure or when the model's budget is exhausted."""
+    settings = get_settings()
     return await structured_call(
-        model=get_settings().model_answer,
-        messages=build_messages(question, history),
+        model=settings.model_answer,
+        messages=build_answer_messages(question, history, analysis, context),
         schema_name="llm_answer",
         schema=LLM_ANSWER_SCHEMA,
+        max_completion_tokens=MAX_COMPLETION_TOKENS,
+        reasoning_effort=settings.reasoning_effort_answer,
     )

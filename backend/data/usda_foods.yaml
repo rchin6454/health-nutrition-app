@@ -1,0 +1,66 @@
+# USDA FoodData Central fallback foods (architecture §10.1).
+#
+# IFCT 2017 is the primary source but covers raw foods only. These are the cooked dishes and
+# common foods it does not have. Only the FDC IDs listed here are loaded, so fuzzy name matching
+# can never drift onto an unrelated USDA food.
+#
+#   fdc_id:     FoodData Central ID (SR Legacy or FNDDS survey food)
+#   name:       display name used in facts (the USDA description is often US-specific)
+#   state:      raw | cooked | null (neither applies, e.g. curd, honey)
+#   diet:       veg | egg | nonveg
+#   food_group: free text, for audit only (USDA foods are never used for recommendation lists)
+#
+# Synonyms for these foods live in synonyms.yaml under "usda:<fdc_id>".
+
+foods:
+  # --- Breads and cooked cereals (FNDDS survey foods) ---
+  - {fdc_id: 2707713, name: "Roti / chapati", state: cooked, diet: veg, food_group: Breads}
+  - {fdc_id: 2707715, name: "Paratha", state: cooked, diet: veg, food_group: Breads}
+  - {fdc_id: 2707714, name: "Puri", state: cooked, diet: veg, food_group: Breads}
+  - {fdc_id: 2707613, name: "Naan", state: cooked, diet: veg, food_group: Breads}
+  - {fdc_id: 2708346, name: "Idli", state: cooked, diet: veg, food_group: Breakfast dishes}
+  - {fdc_id: 2708347, name: "Dosa, plain", state: cooked, diet: veg, food_group: Breakfast dishes}
+  - {fdc_id: 2709129, name: "Masala dosa (dosa with filling)", state: cooked, diet: veg, food_group: Breakfast dishes}
+  - {fdc_id: 2709128, name: "Upma", state: cooked, diet: veg, food_group: Breakfast dishes}
+  - {fdc_id: 2709130, name: "Vada", state: cooked, diet: veg, food_group: Snacks}
+  - {fdc_id: 2708730, name: "Samosa", state: cooked, diet: veg, food_group: Snacks}
+  - {fdc_id: 2710066, name: "Pakora", state: cooked, diet: veg, food_group: Snacks}
+  # --- Dals, curries and rice dishes (FNDDS) ---
+  - {fdc_id: 2707427, name: "Dal (cooked)", state: cooked, diet: veg, food_group: Dals and curries}
+  - {fdc_id: 2707430, name: "Sambar", state: cooked, diet: veg, food_group: Dals and curries}
+  - {fdc_id: 2709631, name: "Palak paneer", state: cooked, diet: veg, food_group: Dals and curries}
+  - {fdc_id: 2706437, name: "Chicken curry", state: cooked, diet: nonveg, food_group: Dals and curries}
+  - {fdc_id: 2708985, name: "Vegetable biryani", state: cooked, diet: veg, food_group: Rice dishes}
+  - {fdc_id: 2706538, name: "Chicken biryani", state: cooked, diet: nonveg, food_group: Rice dishes}
+  # --- Cooked staples (SR Legacy) ---
+  - {fdc_id: 169757, name: "Rice, white, cooked", state: cooked, diet: veg, food_group: Cooked cereals}
+  - {fdc_id: 169704, name: "Rice, brown, cooked", state: cooked, diet: veg, food_group: Cooked cereals}
+  - {fdc_id: 171675, name: "Oats porridge (cooked with water)", state: cooked, diet: veg, food_group: Cooked cereals}
+  - {fdc_id: 168917, name: "Quinoa, cooked", state: cooked, diet: veg, food_group: Cooked cereals}
+  - {fdc_id: 172421, name: "Lentils (masoor), boiled", state: cooked, diet: veg, food_group: Cooked legumes}
+  - {fdc_id: 173757, name: "Chickpeas (chana), boiled", state: cooked, diet: veg, food_group: Cooked legumes}
+  - {fdc_id: 175194, name: "Kidney beans (rajma), boiled", state: cooked, diet: veg, food_group: Cooked legumes}
+  - {fdc_id: 171477, name: "Chicken breast, roasted", state: cooked, diet: nonveg, food_group: Cooked meat}
+  # --- Foods IFCT does not list (SR Legacy) ---
+  - {fdc_id: 171284, name: "Curd (dahi), whole milk", state: null, diet: veg, food_group: Milk products}
+  - {fdc_id: 170886, name: "Curd (dahi), low fat", state: null, diet: veg, food_group: Milk products}
+  - {fdc_id: 170874, name: "Buttermilk (chaas), low fat", state: null, diet: veg, food_group: Milk products}
+  - {fdc_id: 173410, name: "Butter, salted", state: null, diet: veg, food_group: Milk products}
+  - {fdc_id: 175215, name: "Soy milk, unsweetened", state: null, diet: veg, food_group: Milk alternatives}
+  - {fdc_id: 172475, name: "Tofu, firm", state: raw, diet: veg, food_group: Legume products}
+  - {fdc_id: 172470, name: "Peanut butter, unsalted", state: null, diet: veg, food_group: Legume products}
+  - {fdc_id: 169957, name: "Moong sprouts", state: raw, diet: veg, food_group: Legume products}
+  - {fdc_id: 173904, name: "Oats, rolled (dry)", state: raw, diet: veg, food_group: Cereals}
+  - {fdc_id: 174924, name: "Bread, white", state: null, diet: veg, food_group: Breads}
+  - {fdc_id: 172688, name: "Bread, whole wheat (brown bread)", state: null, diet: veg, food_group: Breads}
+  - {fdc_id: 174288, name: "Besan (chickpea flour)", state: raw, diet: veg, food_group: Flours}
+  - {fdc_id: 169717, name: "Sabudana (tapioca pearls), dry", state: raw, diet: veg, food_group: Cereals}
+  - {fdc_id: 170149, name: "Makhana (lotus seeds), dried", state: raw, diet: veg, food_group: Nuts and seeds}
+  - {fdc_id: 170554, name: "Chia seeds", state: raw, diet: veg, food_group: Nuts and seeds}
+  - {fdc_id: 170556, name: "Pumpkin seeds", state: raw, diet: veg, food_group: Nuts and seeds}
+  - {fdc_id: 171290, name: "Processed cheese", state: null, diet: veg, food_group: Milk products}
+  - {fdc_id: 169655, name: "Sugar, white", state: null, diet: veg, food_group: Sugars}
+  - {fdc_id: 169640, name: "Honey", state: null, diet: veg, food_group: Sugars}
+  - {fdc_id: 173227, name: "Tea, black, brewed (no milk or sugar)", state: null, diet: veg, food_group: Beverages}
+  - {fdc_id: 171917, name: "Green tea, brewed", state: null, diet: veg, food_group: Beverages}
+  - {fdc_id: 171890, name: "Coffee, brewed (no milk or sugar)", state: null, diet: veg, food_group: Beverages}

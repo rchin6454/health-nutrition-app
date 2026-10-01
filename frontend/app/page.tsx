@@ -1,5 +1,6 @@
 import ChatPanel from "@/components/ChatPanel";
 import SourcesPanel from "@/components/SourcesPanel";
+import { DISCLAIMER } from "@/lib/notices";
 
 export default function Home() {
   return (
@@ -14,7 +15,7 @@ export default function Home() {
         <SourcesPanel />
       </main>
       <footer className="px-4 pb-3 text-center text-xs text-zinc-500">
-        General information, not medical advice.
+        {DISCLAIMER}
       </footer>
     </div>
   );

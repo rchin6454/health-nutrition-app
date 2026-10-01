@@ -384,6 +384,8 @@ async def structured_call(*, model: str, messages: list[dict], schema_name: str,
 | `max_retries` | `0` | A failed call is recorded, not silently retried (R7) |
 | Temperature | `0.2` | Consistent, factual answers |
 | Model IDs | Set by environment variables `MODEL_UNDERSTANDING` and `MODEL_ANSWER` | Swap models without code changes |
+| Rate limits | Per-model budget (`app/llm/rate_limit.py`) for Groq's RPM, RPD, TPM and TPD, set by `GROQ_RPM`, `GROQ_RPD`, `GROQ_TPM`, `GROQ_TPD` | Calls are paced (up to `LLM_MAX_WAIT_S`) or refused before reaching Groq; refusals are recorded as `budget_exceeded` failures. Pacing happens before a call and is never a retry (R7) |
+| Token use | `reasoning_effort` low (understanding) / medium (answer); `max_completion_tokens` 1,500 / 2,500 | Reasoning tokens count against Groq's limits |
 
 **Schema export.** JSON Schemas are generated from the Pydantic models and then run through a small `to_groq_strict()` helper. The helper makes sure every object has `additionalProperties: false`, every property is listed in `required`, and nullable fields use `{"type": [..., "null"]}`. A startup test sends one tiny request per schema to confirm Groq accepts it.
 
@@ -727,31 +729,38 @@ Prompts live in `backend/app/prompts/*.md`, with a `PROMPT_VERSION` constant tha
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE foods (
-    id          TEXT PRIMARY KEY,        -- "ifct:A012", "usda:170567"
-    name        TEXT NOT NULL,
-    food_group  TEXT,
-    state       TEXT,                    -- raw | cooked
-    dataset     TEXT NOT NULL            -- IFCT2017 | USDA_FDC
+    id              TEXT PRIMARY KEY,    -- "ifct:A012", "usda:170567"
+    name            TEXT NOT NULL,
+    food_group      TEXT,
+    state           TEXT,                -- raw | cooked
+    dataset         TEXT NOT NULL,       -- IFCT2017 | USDA_FDC
+    diet            TEXT NOT NULL,       -- veg | egg | nonveg (vegetarian-first lists)
+    recommendable   BOOLEAN NOT NULL,    -- false for spices, oils, sugars, USDA fallbacks
+    dataset_version TEXT NOT NULL
 );
 
 CREATE TABLE food_synonyms (
     synonym     TEXT NOT NULL,           -- "dahi", "chawal", "baingan"
-    food_id     TEXT NOT NULL REFERENCES foods(id),
+    food_id     TEXT NOT NULL REFERENCES foods(id) ON DELETE CASCADE,
+    origin      TEXT NOT NULL,           -- curated | dataset_name | local_name (resolution order)
+    dataset_version TEXT NOT NULL,
     PRIMARY KEY (synonym, food_id)
 );
 
 CREATE TABLE nutrients (
-    food_id     TEXT NOT NULL REFERENCES foods(id),
+    food_id     TEXT NOT NULL REFERENCES foods(id) ON DELETE CASCADE,
     nutrient    TEXT NOT NULL,           -- protein | iron | energy_kcal ...
     amount      REAL NOT NULL,           -- per 100 g edible portion
-    unit        TEXT NOT NULL,
+    unit        TEXT NOT NULL,           -- g | mg | µg | kcal
     PRIMARY KEY (food_id, nutrient)
 );
 
 CREATE TABLE portion_weights (
-    food_id     TEXT REFERENCES foods(id),  -- NULL = generic measure
-    portion     TEXT NOT NULL,              -- "1 katori", "1 roti", "1 glass"
-    grams       REAL NOT NULL
+    food_id     TEXT REFERENCES foods(id) ON DELETE CASCADE,  -- NULL = generic measure
+    measure     TEXT NOT NULL,           -- one unit of: katori | cup | glass | tbsp | piece …
+    grams       REAL NOT NULL,
+    note        TEXT,                    -- the assumption shown to the user
+    dataset_version TEXT NOT NULL
 );
 
 CREATE TABLE safety_rules (
@@ -780,15 +789,30 @@ CREATE INDEX ON doc_chunks USING hnsw (embedding vector_cosine_ops);
 
 ```
 backend/scripts/ingest/
+  fetch_raw.py          # downloads IFCT 2017 + USDA CSVs into data/raw/ (git-ignored)
   load_ifct.py          # IFCT tables → foods + nutrients (primary)
-  load_usda.py          # USDA FDC → foods + nutrients (fallback)
-  load_portions.py      # Indian household measures → portion_weights
-  load_safety_rules.py  # curated YAML (FSSAI first) → safety_rules
-  build_synonyms.py     # English + Hindi + regional names
-  chunk_and_embed.py    # guidance docs → ~500-token chunks → fastembed → doc_chunks
+  load_usda.py          # USDA FDC → foods + nutrients (fallback; only IDs in data/usda_foods.yaml)
+  load_portions.py      # Indian household measures (data/portions.yaml) → portion_weights
+  load_safety_rules.py  # curated YAML (FSSAI first) → safety_rules + safety_food_aliases
+  build_synonyms.py     # English + Hindi + regional names (data/synonyms.yaml + IFCT local names)
+  chunk_and_embed.py    # data/guidance/*.md → ≤500-token section chunks → fastembed → doc_chunks
+  run_all.py            # every loader in order (Phase 3 nutrition, then Phase 4 safety)
 ```
 
-The scripts are idempotent and re-runnable, and each run is tagged with a dataset version.
+The scripts are idempotent and re-runnable, and each run is tagged with a dataset version (the dataset name plus a hash of its input files).
+
+**Nutrition data notes (Phase 3).**
+- IFCT 2017 describes **raw** foods only. Cooked dishes (roti, idli, dosa, dal, cooked rice) and a few foods IFCT lacks (curd, oats, besan) come from a curated list of USDA FoodData Central foods (SR Legacy + FNDDS survey foods), each named in `data/usda_foods.yaml`. Nothing else from USDA is loaded, so name matching can never drift onto an unrelated USDA food.
+- Household measures for raw ingredients give the raw weight one cooked serving is made from, following ICMR-NIN serving sizes (1 katori cooked dal ≈ 30 g raw dal; 1 katori cooked palak ≈ 100 g raw leaves). Countable cooked items use FNDDS portion weights (1 medium roti ≈ 40 g).
+- The resolver's fuzzy fallback only handles multi-word names and ignores IFCT's local-language names: single Hindi words one letter apart are often different foods ("kheer"/"kheera").
+
+**Food-safety data notes (Phase 4).**
+- `data/safety_rules.yaml` holds 47 curated rules for 13 food groups (cooked rice, dal/curries, milk, paneer, curd, chicken, fish, meat, eggs, cut fruit, chutneys/street food, thawed meat, leftovers) plus power cuts. Each limit takes the cautious end of the published range (USDA "3–4 days" → 3 days). Where no authority gives a number for an Indian food (paneer, homemade curd, fresh chutneys, cut fruit), the limit is a conservative curated one and `origin` says so.
+- Additions to §10.2: `safety_rules.food_label` and `hot_max_duration_hours` (the stricter limit above ~32 °C), a `safety_food_aliases` table (food names → food group, e.g. "chawal" → cooked rice, "chicken biryani" → chicken + cooked rice, cooked), and `doc`/`dataset_version` on `doc_chunks`.
+- Code compares the user's stated storage time ("overnight", "4 ghante") with the matching limit and adds the result as a fact ("…longer than the limit of 2 hours"), so the verdict never depends on the model doing arithmetic. In a fridge during a power cut, the comparison uses the power-cut limit (4 hours), not the usual fridge limit.
+- `data/guidance/*.md` are curated, paraphrased summaries of FSSAI / Eat Right India, WHO "Five Keys" and ICMR-NIN guidance (34 section-sized chunks), not the original documents, pending the licence check (§16.4). Rule guidance and passage text never name an authority; the authority is kept only in `origin`, like dataset names.
+- Retrieval keeps the top 4 chunks that score at least 0.65 and within 0.1 of the best match. bge-small scores same-domain text closely (measured: unrelated 0.4–0.55, on-topic 0.7–0.85), so a fixed cut-off alone would keep loosely related passages. Both thresholds belong to the embedder, because they depend on the model.
+- Each knowledge step (safety rules, nutrition, retrieval) fails on its own: the error is recorded (`safety_lookup_failed`, `knowledge_lookup_failed`, `retrieval_failed`) and the facts from the other steps are still used.
 
 ---
 
@@ -862,7 +886,7 @@ flowchart LR
 | Piece | Platform | Notes |
 |-------|----------|-------|
 | Frontend | **Vercel** | `NEXT_PUBLIC_API_URL` points at the Railway backend. No model keys here |
-| Backend | **Railway** (Dockerfile) | Env: `GROQ_API_KEY`, `DATABASE_URL`, `ALLOWED_ORIGINS`, `MODEL_UNDERSTANDING`, `MODEL_ANSWER`, `ADMIN_TOKEN`. The fastembed model is downloaded at build time |
+| Backend | **Railway** (Dockerfile) | Env: `GROQ_API_KEY`, `DATABASE_URL`, `ALLOWED_ORIGINS`, `MODEL_UNDERSTANDING`, `MODEL_ANSWER`, `ADMIN_TOKEN`. The fastembed model is downloaded into `EMBEDDING_CACHE_DIR` (`/app/models`) at build time and loaded once at startup; `/api/health` reports `embeddings: ok` |
 | Database | **Supabase**, Mumbai region (`ap-south-1`) | Closest to Indian users. Runs migrations for all tables above |
 | Region | Railway's nearest region to India (e.g. Singapore) | Keeps the backend ↔ database hop short |
 

@@ -55,12 +55,16 @@ async def add_message(
     prompt_version: str | None = None,
     latency_ms: int | None = None,
     usage: dict[str, Any] | None = None,
-) -> None:
-    await db.get_pool().execute(
+    context_snapshot: dict[str, Any] | None = None,
+) -> int:
+    """Insert one message and return its id."""
+    message_id: int = await db.get_pool().fetchval(
         """
         INSERT INTO messages (
-            conversation_id, request_id, role, content, model, prompt_version, latency_ms, usage
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            conversation_id, request_id, role, content, model, prompt_version, latency_ms, usage,
+            context_snapshot
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
         """,
         UUID(conversation_id),
         UUID(request_id),
@@ -70,6 +74,15 @@ async def add_message(
         prompt_version,
         latency_ms,
         usage,
+        context_snapshot,
+    )
+    return message_id
+
+
+async def set_analysis(message_id: int, analysis: dict[str, Any]) -> None:
+    """Attach the `QuestionAnalysis` to the user message it was made from."""
+    await db.get_pool().execute(
+        "UPDATE messages SET analysis = $2 WHERE id = $1", message_id, analysis
     )
 
 
@@ -110,3 +123,16 @@ async def delete(conversation_id: str) -> bool:
         "DELETE FROM conversations WHERE id = $1", UUID(conversation_id)
     )
     return result != "DELETE 0"
+
+
+async def recent_usage(hours: int = 24) -> list[tuple[float, dict[str, Any]]]:
+    """`(age_s, usage)` for every assistant message with Groq token usage in the last `hours`."""
+    rows = await db.get_pool().fetch(
+        """
+        SELECT EXTRACT(EPOCH FROM now() - created_at)::float8 AS age_s, usage FROM messages
+        WHERE role = 'assistant' AND usage IS NOT NULL
+          AND created_at > now() - make_interval(hours => $1)
+        """,
+        hours,
+    )
+    return [(row["age_s"], row["usage"]) for row in rows]

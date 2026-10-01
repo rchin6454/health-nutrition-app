@@ -6,9 +6,11 @@ requires-python = ">=3.12"
 dependencies = [
     "asyncpg>=0.31.0",
     "fastapi>=0.141.1",
+    "fastembed>=0.7",
     "groq>=1.7.0",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "rapidfuzz>=3.14.6",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -25,6 +27,8 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]  # assert is fine in tests
+# Offline ingestion scripts: one connection, run by hand, so blocking file reads are fine.
+"scripts/ingest/**" = ["ASYNC240"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -45,5 +49,7 @@ dev = [
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.16.9",
+    "types-pyyaml>=6.0.12.20260906",
 ]
