@@ -390,7 +390,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 > - **Answer prompt:** no daily requirements (RDA) or percentages unless they are in `<context>`. `nut-amla-vitamin-c` passes.
 > - **Medication referral:** `scope-grapefruit-statin` and `scope-soy-thyroid-tablets` are now blocked in code.
 > - **Ghee:** left as a deliberate data gap; `unc-ghee-calories` checks that the model says the value is unverified.
-> - **Failure-review SQL:** all four queries in `backend/sql/failure_review.sql` run against Supabase (R4 check returns 0); still to be saved in the Supabase SQL editor.
+> - **Failure-review SQL:** all four queries in `backend/sql/failure_review.sql` run against Supabase (R4 check returns 0); the three review queries are saved in the Supabase SQL editor (2026-10-01).
 > - **Still to do:** the full 114-case baseline for `v0.5` (in progress; finish with `--resume` if the Groq daily limit is reached), then deploy and verify live.
 >
 > **Baseline below is for the previous `v0.4` prompts.**
@@ -438,7 +438,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 ### 5.2 Failure visibility
 
 - [x] `GET /api/admin/failures` (requires the `ADMIN_TOKEN` header) with filters by `failure_type`, `stage` and date.
-- [ ] Saved SQL queries in Supabase (written and tested in `backend/sql/failure_review.sql`; still to be pasted into the Supabase SQL editor and saved): failures per day by type; top recurring `failure_type`; warning rate per prompt version.
+- [x] Saved SQL queries in Supabase (from `backend/sql/failure_review.sql`, saved in the SQL editor on 2026-10-01): failures per day by type; top recurring `failure_type`; warning rate per prompt version.
 - [x] Weekly review routine (README, "Reviewing failures"): every recurring failure type becomes an issue, gets fixed at the root (prompt, schema or code), and gets an eval case added. **Never** hidden with retries or post-processing.
 
 ### 5.3 Hardening
@@ -463,7 +463,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
   - classification ≥ 90%
   - nutrition numeric accuracy ≥ 90%
   - food-safety verdict correctness ≥ 95%
-- [ ] Admin failures endpoint works (done, tested), and the Supabase queries are saved (verified against Supabase; still to save in the SQL editor).
+- [x] Admin failures endpoint works (done, tested), and the Supabase queries are saved (verified against Supabase and saved in the SQL editor).
 - [x] Load test passes with p95 < 6 s, and every error has a `failures` row.
 
 ---
