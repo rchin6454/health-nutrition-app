@@ -237,7 +237,12 @@ _DURATION = re.compile(
     + r")\b",
     re.IGNORECASE,
 )
-_OVERNIGHT = re.compile(r"\b(overnight|over\s*night|all\s+night|whole\s+night|raat\s*bhar)\b", re.I)
+_OVERNIGHT = re.compile(
+    r"\b(overnight|over\s*night|all\s+night|whole\s+night|last\s+night|raat\s*bhar)\b", re.I
+)
+# Relative days, taken as whole days since then: "yesterday" → 1 day, "parso" → 2 days.
+_DAY_BEFORE_YESTERDAY = re.compile(r"\b(day\s+before\s+yesterday|parso|parson)\b", re.I)
+_YESTERDAY = re.compile(r"\b(yesterday|kal)\b", re.IGNORECASE)
 _HALF_HOUR = re.compile(r"\bhalf\s+(?:an\s+)?hour\b", re.IGNORECASE)
 OVERNIGHT_HOURS = 8.0
 
@@ -248,11 +253,16 @@ def _amount(text: str) -> float:
 
 
 def parse_duration_hours(text: str | None) -> float | None:
-    """ "4 hours" → 4, "2-3 days" → 72 (the longer end), "overnight" → 8. None if unclear."""
+    """ "4 hours" → 4, "2-3 days" → 72 (the longer end), "overnight" → 8, "yesterday" → 24.
+    None if unclear."""
     if not text:
         return None
     if _OVERNIGHT.search(text):
         return OVERNIGHT_HOURS
+    if _DAY_BEFORE_YESTERDAY.search(text):
+        return 48.0
+    if _YESTERDAY.search(text):
+        return 24.0
     if _HALF_HOUR.search(text):
         return 0.5
     match = _DURATION.search(text)
@@ -314,6 +324,10 @@ def stated_storage_fact(rule: SafetyRule, duration: str, hours: float) -> str | 
     stated = f"for {duration}"
     if hours == OVERNIGHT_HOURS and _OVERNIGHT.search(duration):
         stated = "overnight (taken as at least 8 hours)"
+    elif not _DURATION.search(duration) and (
+        _YESTERDAY.search(duration) or _DAY_BEFORE_YESTERDAY.search(duration)
+    ):
+        stated = f"since {duration} (taken as about {format_duration(hours)})"
     limit = format_duration(rule.max_duration_hours)
     if rule.food_group == POWER_CUT_GROUP:
         head = f"Power cut with the food {where} {stated}"

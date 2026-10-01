@@ -4,8 +4,8 @@ from pathlib import Path
 
 _DIR = Path(__file__).parent
 
-ANSWER_PROMPT_VERSION = "answer-v0.4"
-UNDERSTANDING_PROMPT_VERSION = "understanding-v0.4"
+ANSWER_PROMPT_VERSION = "answer-v0.5"
+UNDERSTANDING_PROMPT_VERSION = "understanding-v0.5"
 
 # The pair of prompts a turn ran with; stored on assistant messages.
 PROMPT_VERSION = f"{ANSWER_PROMPT_VERSION}+{UNDERSTANDING_PROMPT_VERSION}"

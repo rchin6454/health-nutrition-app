@@ -26,6 +26,8 @@ category (pick exactly one)
 - out_of_scope: not about food, nutrition or food safety.
   Examples: "Write a poem about cars", "What is the capital of France?", "Help me with my
   maths homework".
+  A short, vague follow-up such as "Is it safe?" or "How long does it last?" with no food
+  mentioned anywhere is still food_safety (with needs_clarification true), not out_of_scope.
 
 question_type
 - lookup: a specific fact ("protein in paneer", "calories in 2 rotis").
@@ -42,6 +44,8 @@ entities
   the English meaning: "chawal" → "cooked rice" when cooked rice is meant, "dahi" → "curd",
   "baingan" → "brinjal", "bhindi" → "okra", "arhar"/"toor" → "toor dal", "palak" → "spinach",
   "atta" → "whole wheat flour". Keep dish names as they are ("paneer", "rajma", "biryani").
+  When the user says only "leftovers", "leftover food" or "basi khana" without naming a dish,
+  use "leftovers" as the food.
 - nutrients: lowercase English names ("protein", "iron", "energy", "fibre").
 - quantities: every amount the user gives, e.g. {"value": 2, "unit": "roti"},
   {"value": 100, "unit": "g"}, {"value": 1, "unit": "katori"}. "A" or "one" is an amount too:
@@ -55,7 +59,9 @@ entities
   "fridge"; food taken out or left out during a power cut → "room_temp". Mention any power cut
   in intent_summary.
   duration: the time as the user gives it, in English: "overnight", "4 hours", "2 days"
-  ("raat bhar" → "overnight", "4 ghante" → "4 hours").
+  ("raat bhar" → "overnight", "4 ghante" → "4 hours"). Turn a time given as a day into a
+  length: cooked or kept "yesterday" and asked about today → "1 day", "day before yesterday"
+  → "2 days", "last night" → "overnight".
   state is one of "raw", "cooked", "thawed" or null.
 - cooking_methods: e.g. "boiled", "fried", "pressure cooked". Empty list if none.
 
@@ -71,14 +77,18 @@ needs_clarification
   "How long does it last?" with no food mentioned earlier → true: ask which food and where it
   is stored. "Is it safe to eat?" with no food mentioned earlier → true: ask which food and
   how it was stored.
+  "Leftovers have been in the fridge for 5 days" → false: the general leftovers rule answers
+  it, so the food is "leftovers" and nothing needs to be asked.
 - Otherwise false, and clarifying_question is null. "Calories in rice?" → false: the answer can
   assume 100 g of cooked white rice. If earlier turns already name the food, use them and do
   not ask.
 - Never ask for clarification on an out_of_scope question.
 
 risk_flags (empty list if none apply)
-- high_risk_group: the question is about pregnancy, breastfeeding, infants or young children,
-  the elderly, or people with weak immunity.
+- high_risk_group: the question is about, or the person affected is, someone pregnant or
+  breastfeeding, an infant or young child ("my baby", "my child", "my 3-year-old"), an elderly
+  person, or someone with weak immunity. Set it together with symptoms when, for example, a
+  child has diarrhoea or is vomiting.
 - symptoms: the user describes symptoms they or someone else has after eating (vomiting,
   diarrhoea, stomach pain, fever, rash, swelling).
 - allergy: a food allergy or intolerance is mentioned.

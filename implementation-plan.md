@@ -383,7 +383,17 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 5 — Quality, Evals and Hardening
 
-> **Status (2026-10-01):** code and tests done (714 backend, 38 frontend tests). Not yet deployed.
+> **Status (2026-10-01):** code and tests done (721 backend, 38 frontend tests). Not yet deployed.
+> **Update (2026-10-01), `answer-v0.5+understanding-v0.5`:** the open findings below are fixed, and all 8 cases that failed the baseline now pass (subset run: verdicts 2/2, scope blocked in code 2/2, schema and `source == null` 100%):
+> - **Safety duration:** `parse_duration_hours` reads relative days ("yesterday"/"kal" → 1 day, "day before yesterday"/"parso" → 2 days, "last night" → overnight), and the understanding prompt turns such days into lengths. `fs-rice-fridge-1-day` passes.
+> - **Understanding prompt:** "leftovers" with no dish named is the food "leftovers" (general rule, no clarification); vague follow-ups with no food ("Is it safe?") are `food_safety` with a clarifying question, not `out_of_scope`; a child or other high-risk person affected sets `high_risk_group`. `fs-leftovers-5-days`, `clar-is-it-safe`, `clar-how-long-does-it-last` and `fs-child-diarrhoea` pass.
+> - **Answer prompt:** no daily requirements (RDA) or percentages unless they are in `<context>`. `nut-amla-vitamin-c` passes.
+> - **Medication referral:** `scope-grapefruit-statin` and `scope-soy-thyroid-tablets` are now blocked in code.
+> - **Ghee:** left as a deliberate data gap; `unc-ghee-calories` checks that the model says the value is unverified.
+> - **Failure-review SQL:** all four queries in `backend/sql/failure_review.sql` run against Supabase (R4 check returns 0); still to be saved in the Supabase SQL editor.
+> - **Still to do:** the full 114-case baseline for `v0.5` (in progress; finish with `--resume` if the Groq daily limit is reached), then deploy and verify live.
+>
+> **Baseline below is for the previous `v0.4` prompts.**
 > **Baseline evals, `answer-v0.4+understanding-v0.4`** (local Postgres with all knowledge data, real Groq models, `reasoning_effort` low/medium): **98 of 114 cases run**. The free-tier daily token limit of `gpt-oss-120b` (200K TPD) was reached at case 99; the 16 remaining cases (Indian context, uncertainty) need `--resume` once the budget recovers. The run also used up that day's answer-model budget for the live app, which shares the Groq organization.
 >
 > | Metric | Value | n | Target |
@@ -446,14 +456,14 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 - [x] Empty state, loading state, error state and rate-limit state all designed.
 
 ### Exit criteria
-- [ ] Baseline eval results are recorded for the current `PROMPT_VERSION` (recorded for 98/114 cases; scope and verdict targets missed, see status):
+- [ ] Baseline eval results are recorded for the current `PROMPT_VERSION` (`v0.4`: 98/114 cases, scope and verdict targets missed; `v0.5`: the 8 failed cases now pass, full run in progress):
   - schema parse rate = **100%**
   - `source == null` = **100%**
   - scope blocks happen in code = **100%**
   - classification ≥ 90%
   - nutrition numeric accuracy ≥ 90%
   - food-safety verdict correctness ≥ 95%
-- [ ] Admin failures endpoint works (done, tested), and the Supabase queries are saved (still to paste into Supabase).
+- [ ] Admin failures endpoint works (done, tested), and the Supabase queries are saved (verified against Supabase; still to save in the SQL editor).
 - [x] Load test passes with p95 < 6 s, and every error has a `failures` row.
 
 ---

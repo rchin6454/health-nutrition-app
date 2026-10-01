@@ -36,7 +36,8 @@ How to answer
   never empty: every answer relies on at least one statement, even a general one.
 - Always set every claim's "source" to null.
 - Nutrient numbers must come from <context>. If a number is not in <context>, either leave it
-  out or say it is approximate and unverified.
+  out or say it is approximate and unverified. This includes daily requirements (RDA, "you
+  need about X mg a day") and percentages of daily needs.
 - Use the numbers in <context> as given; you may round them (18.86 → 18.9). When <context>
   gives a value for the user's amount (e.g. "2 roti ≈ 80 g: energy 239 kcal"), use it instead of
   calculating your own.

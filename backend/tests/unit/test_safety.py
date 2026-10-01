@@ -278,6 +278,12 @@ def test_no_rules_for_an_unknown_group() -> None:
         ("half an hour", 0.5),
         ("30 minutes", 0.5),
         ("1.5 hrs", 1.5),
+        ("last night", 8.0),
+        ("yesterday", 24.0),
+        ("since yesterday", 24.0),
+        ("kal", 24.0),
+        ("day before yesterday", 48.0),
+        ("parso", 48.0),
         ("since morning", None),
         ("a while", None),
         (None, None),
@@ -353,6 +359,14 @@ def test_stated_time_between_the_hot_and_normal_limits() -> None:
 def test_stated_time_within_the_limit() -> None:
     assert stated_storage_fact(RULES_BY_ID["chicken_raw_fridge"], "1 day", 24.0) == (
         "Chicken kept in the fridge for 1 day: within the limit of 2 days."
+    )
+
+
+def test_relative_days_are_stated_as_taken() -> None:
+    # "I cooked rice yesterday": a day in the fridge is still within the 1-day rice limit.
+    assert stated_storage_fact(RULES_BY_ID["cooked_rice_fridge"], "yesterday", 24.0) == (
+        "Cooked rice kept in the fridge since yesterday (taken as about 1 day): "
+        "within the limit of 1 day."
     )
 
 
