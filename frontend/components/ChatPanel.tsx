@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ChatInput from "@/components/ChatInput";
 import type { ChatItem } from "@/components/MessageBubble";
 import MessageList from "@/components/MessageList";
 import {
   ApiError,
   getConversation,
+  RateLimitError,
   sendMessage,
   type Conversation,
 } from "@/lib/api";
+import type { ChatResponse } from "@/lib/types";
 
 export const CONVERSATION_KEY = "conversation_id";
 
@@ -49,11 +51,50 @@ function errorText(err: unknown): string {
     : "Something went wrong. Please try again.";
 }
 
+// What the live region reads out when a reply arrives.
+function announcement(response: ChatResponse): string {
+  const label =
+    response.answer_type === "error"
+      ? "Error"
+      : response.answer_type === "clarification"
+        ? "The assistant asks"
+        : "The assistant replied";
+  // Markdown markers (**bold**, # headings, list bullets) would be read out literally.
+  const text = response.answer.replace(/[*_#`>]+/g, "").replace(/\s+/g, " ");
+  return `${label}: ${text.trim()}`;
+}
+
+// A rate-limit cooldown: `start(seconds)` begins it; `remaining` counts down to 0 each second.
+function useCooldown(): [number, (seconds: number) => void] {
+  const [until, setUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  const start = useCallback((seconds: number) => {
+    const t = Date.now();
+    setNow(t);
+    setUntil(t + seconds * 1000);
+  }, []);
+  useEffect(() => {
+    if (until === null) return;
+    const timer = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= until) setUntil(null);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [until]);
+  const remaining =
+    until === null ? 0 : Math.max(0, Math.ceil((until - now) / 1000));
+  return [remaining, start];
+}
+
 export default function ChatPanel() {
   const conversationId = useRef<string | null>(null);
   const [items, setItems] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [liveText, setLiveText] = useState("");
+  const [cooldown, startCooldown] = useCooldown();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Restore the stored conversation from the backend on first load.
   useEffect(() => {
@@ -90,22 +131,36 @@ export default function ChatPanel() {
   async function send(message: string) {
     const id = conversationId.current ?? startConversation();
     conversationId.current = id;
+    // Clicking a suggested prompt or "Try again" removes that button: keep focus in the box.
+    inputRef.current?.focus();
     setItems((prev) => [
       ...prev,
       { kind: "user", id: crypto.randomUUID(), text: message },
     ]);
     setSending(true);
+    setLiveText("Thinking…");
     try {
       const response = await sendMessage(id, message);
       setItems((prev) => [
         ...prev,
         { kind: "assistant", id: response.request_id, response },
       ]);
+      setLiveText(announcement(response));
     } catch (err) {
+      const rateLimited = err instanceof RateLimitError;
+      if (rateLimited) startCooldown(err.retryAfterS);
+      const text = errorText(err);
       setItems((prev) => [
         ...prev,
-        { kind: "client_error", id: crypto.randomUUID(), text: errorText(err) },
+        {
+          kind: "client_error",
+          id: crypto.randomUUID(),
+          text,
+          retry: message,
+          rateLimited,
+        },
       ]);
+      setLiveText(text);
     } finally {
       setSending(false);
     }
@@ -114,7 +169,11 @@ export default function ChatPanel() {
   function newChat() {
     conversationId.current = startConversation();
     setItems([]);
+    setLiveText("");
+    inputRef.current?.focus();
   }
+
+  const blocked = sending || loading || cooldown > 0;
 
   return (
     <section
@@ -136,9 +195,27 @@ export default function ChatPanel() {
           Loading conversation…
         </p>
       ) : (
-        <MessageList items={items} sending={sending} onSelectPrompt={send} />
+        <MessageList
+          items={items}
+          sending={sending}
+          onSelectPrompt={send}
+          onRetry={send}
+          retryDisabled={blocked}
+        />
       )}
-      <ChatInput onSend={send} disabled={sending || loading} />
+      <ChatInput
+        onSend={send}
+        disabled={blocked}
+        status={
+          cooldown > 0
+            ? `Too many requests — you can send again in ${cooldown} s.`
+            : undefined
+        }
+        inputRef={inputRef}
+      />
+      <p role="status" aria-live="polite" className="sr-only">
+        {liveText}
+      </p>
     </section>
   );
 }

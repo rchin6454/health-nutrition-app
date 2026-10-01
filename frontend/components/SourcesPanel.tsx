@@ -1,10 +1,11 @@
 // Always empty by design: every claim's `source` is null, so there is nothing to list.
 // It takes no props, so it can't accidentally render sources, passages or dataset names.
+// On narrow screens it stacks below the chat (see app/page.tsx).
 export default function SourcesPanel() {
   return (
     <aside
       aria-labelledby="sources-heading"
-      className="flex flex-col rounded-xl border border-zinc-200 bg-white p-4 md:w-72 md:shrink-0 dark:border-zinc-800 dark:bg-zinc-900"
+      className="flex flex-col rounded-xl border border-zinc-200 bg-white p-3 md:w-72 md:shrink-0 md:p-4 dark:border-zinc-800 dark:bg-zinc-900"
     >
       <h2
         id="sources-heading"

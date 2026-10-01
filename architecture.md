@@ -229,12 +229,14 @@ TypeScript types are generated from the backend's JSON Schema (`/api/schema`) us
 | `/api/conversations/{id}` | DELETE | Deletes a conversation and its messages |
 | `/api/schema` | GET | The `ChatResponse` JSON Schema (for frontend type generation and reviewers) |
 | `/api/health` | GET | Liveness and readiness (database reachable, embedding model loaded) |
-| `/api/admin/failures` | GET | Recent failures (protected by an `ADMIN_TOKEN` header) |
+| `/api/admin/failures` | GET | Recent failures, newest first, filterable by `failure_type`, `stage`, `severity`, `since`/`until`, paged with `before_id`. Requires the `X-Admin-Token` header to equal `ADMIN_TOKEN`; answers 404 while `ADMIN_TOKEN` is unset |
 
 **Cross-cutting concerns**
-- CORS restricted to the Vercel domain.
-- Rate limiting per IP (`slowapi`, e.g. 20 requests/min).
-- A `request_id` (UUID) generated per request, included in the response, every log line and every failure row.
+- CORS restricted to the Vercel domain; `Retry-After` is exposed to the browser.
+- Rate limiting per IP on `POST /api/chat` (`slowapi`, in memory, `RATE_LIMIT_CHAT`, default 20/minute) → HTTP 429 with `Retry-After`, recorded as an `ip_rate_limited` warning. The client IP is the last `X-Forwarded-For` entry written by a trusted proxy (`TRUSTED_PROXY_HOPS`, 1 for Railway's edge), so client-written entries cannot dodge the limit. This is separate from the per-model Groq budget, which protects Groq's limits across all clients.
+- Input sanitization: messages are NFC-normalized and stripped of control and invisible characters (zero-width, bidirectional overrides) before validation, storage and the model; over 1,000 characters → HTTP 422.
+- Structured JSON logs (one object per line): every line of a chat request carries its `request_id` and `conversation_id`; each turn logs one `chat_turn` line with `answer_type`, `category`, `prompt_version`, total latency, latency per stage (`understanding`, `knowledge`, `answer`) and token usage; each HTTP request logs one `http_request` line.
+- Timeouts: Groq 30 s; database statements 5 s. A database timeout is recorded as `db_timeout` (other storage errors as `storage_error`).
 - `GROQ_API_KEY` is read from the environment on Railway only.
 
 ### 5.3 Question Understanding (model call 1)
@@ -520,7 +522,7 @@ The prompt describes the scope, but **code decides**. All rules live in `app/sco
 | Check | Rule | Outcome |
 |-------|------|---------|
 | Length | 2–1,000 characters after trimming | `out_of_scope` response: "Please ask a shorter question" |
-| Blocked topics | Regex and keyword lists in `scope/blocked_topics.py`: medication or supplement dosing, diagnosis requests, weight-loss drugs, eating-disorder behaviours, alcohol or drug use advice | Fixed, code-written response that points to a doctor or helpline; recorded as a `scope_block` event |
+| Blocked topics | Regex and keyword lists in `scope/blocked_topics.py`: medication or supplement dosing, food with a medicine the user takes ("grapefruit while on atorvastatin"), diagnosis requests, weight-loss drugs, eating-disorder behaviours, alcohol or drug use advice | Fixed, code-written response that points to a doctor or helpline; recorded as a `scope_block` event |
 | Emergency keywords | "can't breathe", "throat swelling", "unconscious", "blood in stool"… | The normal flow continues, and code adds the emergency notice (112/108) to `notices` |
 | Prompt-injection patterns | "ignore previous instructions", "system prompt", role-play jailbreaks | Recorded as `injection_suspected`; the request continues with the text still treated as data |
 
@@ -871,6 +873,8 @@ About 100–150 labelled questions, run against the real Groq models:
 
 The eval suite runs on every prompt, schema or model change. Its results are stored with `PROMPT_VERSION`, and the failure rate from production is tracked next to it.
 
+How it runs (`tests/evals/run_evals.py`): each case goes through the real pipeline in-process (gates, knowledge lookup, prompts, validation) against a database with the knowledge tables loaded. Every check is deterministic code; an optional LLM-as-judge rubric (clarity, relevance, unsupported claims, strict schema) is reported next to the checks but never decides a pass. The run only reads the database: failures are captured into the results file, not the `failures` table, so production review queries never count eval traffic. On the Groq free tier a full run (114 cases, 82 of them answer calls) needs more than one day's token budget, so the runner stops at the daily limit, saves partial results and continues with `--resume`. CI runs the `smoke: true` subset when prompts, schemas, scope gates or evals change (`.github/workflows/evals.yml`).
+
 ---
 
 ## 13. Deployment
@@ -926,13 +930,15 @@ health-nutrition-app/
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── app/
-│   │   ├── main.py               # FastAPI app, CORS, rate limit, routers
+│   │   ├── main.py               # FastAPI app, CORS, rate limit, access log, routers
+│   │   ├── logging_config.py     # JSON log formatter, per-request ids
 │   │   ├── config.py             # pydantic-settings (env vars)
 │   │   ├── api/
 │   │   │   ├── chat.py           # POST /api/chat
 │   │   │   ├── conversations.py  # GET / DELETE /api/conversations/{id}
 │   │   │   ├── schema.py         # GET /api/schema
-│   │   │   └── admin.py          # GET /api/admin/failures
+│   │   │   ├── admin.py          # GET /api/admin/failures
+│   │   │   └── rate_limit.py     # per-IP limit (slowapi), 429 handler
 │   │   ├── pipeline/
 │   │   │   ├── orchestrator.py   # runs the lifecycle in §4
 │   │   │   ├── understanding.py  # model call 1
@@ -967,11 +973,13 @@ health-nutrition-app/
 │   ├── migrations/               # SQL for all tables
 │   ├── scripts/ingest/
 │   ├── data/                     # curated YAML (safety rules, synonyms, portions)
+│   ├── sql/failure_review.sql    # saved queries for the weekly failure review
 │   └── tests/
 │       ├── unit/
 │       ├── integration/
 │       ├── fixtures/responses/
-│       └── evals/
+│       ├── evals/                # cases.yaml, checks, run_evals.py, optional judge
+│       └── load/                 # locust load test + stubbed-Groq server
 │
 └── frontend/                     # deployed to Vercel
     ├── package.json

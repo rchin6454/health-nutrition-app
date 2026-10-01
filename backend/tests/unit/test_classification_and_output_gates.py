@@ -44,6 +44,19 @@ def test_clarification_returns_the_models_question() -> None:
     assert decision.reply == "Which food, stored where?"
 
 
+def test_symptoms_are_answered_instead_of_asked_about() -> None:
+    # Phase 4 live finding: "I'm vomiting after eating biryani" came back as a clarification.
+    decision = check_classification(
+        _analysis(
+            category="food_safety",
+            risk_flags=["symptoms"],
+            needs_clarification=True,
+            clarifying_question="How was the biryani stored?",
+        )
+    )
+    assert decision.action == "answer"
+
+
 def test_medication_flag_gets_a_referral_even_when_clarification_is_needed() -> None:
     decision = check_classification(
         _analysis(risk_flags=["medication"], needs_clarification=True, clarifying_question="Which?")

@@ -6,6 +6,8 @@ import sys
 from typing import Literal
 from uuid import UUID
 
+import asyncpg
+
 from app import db
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,14 @@ Stage = Literal[
     "storage",
 ]
 Severity = Literal["error", "warning", "scope_block"]
+
+
+def storage_failure_type(exc: BaseException) -> str:
+    """Database timeouts are recorded as their own type: the client-side `db.QUERY_TIMEOUT_S`
+    (TimeoutError) and a server-side statement timeout (QueryCanceledError)."""
+    timed_out = isinstance(exc, TimeoutError | asyncpg.QueryCanceledError)
+    return "db_timeout" if timed_out else "storage_error"
+
 
 _INSERT = """
 INSERT INTO failures (

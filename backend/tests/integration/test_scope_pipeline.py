@@ -181,7 +181,8 @@ async def test_medication_risk_flag_gets_a_referral_without_an_answer_call(
 ) -> None:
     fake_groq.analysis = analysis_json(risk_flags=["medication"])
 
-    body = await _post(api, "Can I have grapefruit juice with my BP tablets?")
+    # Worded so the input gate lets it through: the classification gate decides here.
+    body = await _post(api, "Is grapefruit juice a problem for people who take BP medicine?")
 
     assert fake_groq.schema_names == ["question_analysis"]
     assert body["answer_type"] == "out_of_scope"

@@ -34,11 +34,19 @@ ALLOWED = [
     "My milk was out during a power cut for 4 hours. Is it okay?",
     "Is it safe to eat pani puri during the monsoon?",
     "What is the difference between besan and maida?",
+    "Is a low-GI diet good for insulin resistance?",
+    "Which foods help with insulin sensitivity?",
+    "Can I take my tiffin to work without a fridge?",
     "hi",
 ]
 
 BLOCKED = [
     ("What dose of metformin should I take?", "medication_dosing"),
+    ("Can I eat grapefruit while I am on atorvastatin?", "medication_interaction"),
+    ("Does soya interfere with my thyroid tablets?", "medication_interaction"),
+    ("I'm on warfarin. Is it okay to eat palak every day?", "medication_interaction"),
+    ("Is it okay to drink milk with antibiotics?", "medication_interaction"),
+    ("meri BP ki dawai ke saath kela kha sakte hai?", "medication_interaction"),
     ("How many paracetamol tablets can I take in a day?", "medication_dosing"),
     ("Should I stop taking my thyroxine before a fast?", "medication_dosing"),
     ("What is the right dosage of vitamin D for adults?", "medication_dosing"),

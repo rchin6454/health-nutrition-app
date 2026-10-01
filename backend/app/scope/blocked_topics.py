@@ -9,6 +9,8 @@ eating-disorder behaviours and alcohol/drug advice, while letting ordinary food 
 import re
 from dataclasses import dataclass
 
+from app.scope.classification_gate import MEDICATION_REFERRAL
+
 _QUOTES = {0x2018: "'", 0x2019: "'"}  # curly single quotes → straight
 
 
@@ -81,6 +83,7 @@ MEDICATION_DOSING = BlockedTopic(
     "into account.\n\nI'm happy to help with general food and nutrition questions, for "
     "example which foods are good sources of a nutrient.",
 )
+MEDICATION_INTERACTION = BlockedTopic("medication_interaction", MEDICATION_REFERRAL)
 DIAGNOSIS = BlockedTopic(
     "diagnosis",
     "I can't diagnose health conditions or tell you whether you have one. Please see a doctor, "
@@ -161,6 +164,19 @@ _RULES: list[tuple[BlockedTopic, list[re.Pattern[str]]]] = [
                 "|".join([_DOSE, _AMOUNT_UNITS, _HOW_MUCH_TO_TAKE]),
             ),
             _cooccur(_VITAMINS_MINERALS, _DOSE),
+        ],
+    ),
+    (
+        # Food with a medicine the user takes ("grapefruit while on atorvastatin", "soya and my
+        # thyroid tablets"). Phase 5 evals: the understanding call missed both, so the model
+        # answered them; the referral is now decided here, in code (R5).
+        MEDICATION_INTERACTION,
+        [
+            _any(
+                rf"\b(on|taking|take|takes|with|my|while on|started)\b[^.?!]{{0,15}}{_DRUGS}"
+                r"(?! ?(resistance|spikes?|levels?|sensitivity|response|index))",
+                rf"\b(my|mere|meri)\b[^.?!]{{0,20}}{_MED_FORMS}",
+            )
         ],
     ),
     (

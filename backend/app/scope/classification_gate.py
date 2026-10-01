@@ -30,6 +30,8 @@ def check_classification(analysis: QuestionAnalysis) -> GateDecision:
     # Before clarification: a medicine question gets a referral, not a follow-up question.
     if "medication" in analysis.risk_flags:
         return GateDecision("referral", MEDICATION_REFERRAL)
-    if analysis.needs_clarification:
+    # Someone describing symptoms gets an answer (with the code-owned 112/108 or symptoms
+    # notice), not a question back about how the food was stored.
+    if analysis.needs_clarification and "symptoms" not in analysis.risk_flags:
         return GateDecision("clarify", analysis.clarifying_question)
     return GateDecision("answer")

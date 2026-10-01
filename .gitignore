@@ -23,3 +23,6 @@ backend/data/raw/
 
 # Eval run outputs
 backend/tests/evals/results/
+
+# Load test outputs
+backend/tests/load/results/

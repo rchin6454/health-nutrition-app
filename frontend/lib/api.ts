@@ -32,6 +32,26 @@ export class ApiError extends Error {
   }
 }
 
+/** HTTP 429 from the backend's per-IP limit. `retryAfterS`: when sending works again. */
+export class RateLimitError extends ApiError {
+  constructor(readonly retryAfterS: number) {
+    super(
+      `Too many requests. Please wait about ${retryAfterS} seconds before asking again.`,
+      429,
+    );
+    this.name = "RateLimitError";
+  }
+}
+
+const DEFAULT_RETRY_AFTER_S = 60;
+
+function retryAfterSeconds(res: Response): number {
+  const seconds = Number(res.headers.get("Retry-After"));
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.ceil(seconds)
+    : DEFAULT_RETRY_AFTER_S;
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
@@ -51,6 +71,7 @@ export async function sendMessage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ conversation_id: conversationId, message }),
   });
+  if (res.status === 429) throw new RateLimitError(retryAfterSeconds(res));
   if (!res.ok) {
     throw new ApiError(
       `The server returned an error (HTTP ${res.status}).`,

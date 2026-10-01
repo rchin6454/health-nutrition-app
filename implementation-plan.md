@@ -383,14 +383,37 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 5 — Quality, Evals and Hardening
 
+> **Status (2026-10-01):** code and tests done (714 backend, 38 frontend tests). Not yet deployed.
+> **Baseline evals, `answer-v0.4+understanding-v0.4`** (local Postgres with all knowledge data, real Groq models, `reasoning_effort` low/medium): **98 of 114 cases run**. The free-tier daily token limit of `gpt-oss-120b` (200K TPD) was reached at case 99; the 16 remaining cases (Indian context, uncertainty) need `--resume` once the budget recovers. The run also used up that day's answer-model budget for the live app, which shares the Groq organization.
+>
+> | Metric | Value | n | Target |
+> |---|---|---|---|
+> | Schema parse rate (model outputs) | **100%** | 151 | 100% ✓ |
+> | `source == null` | **100%** | 98 | 100% ✓ |
+> | Scope blocks in code | 92.3% | 26 | 100% ✗ → fixed (below) |
+> | Classification | 100% | 75 | ≥ 90% ✓ |
+> | Nutrition numeric accuracy | 100% | 28 | ≥ 90% ✓ |
+> | Food-safety verdict correctness | 91.3% | 23 | ≥ 95% ✗ |
+>
+> 90 of 98 cases passed every check. Answer calls used ~2.3K tokens and understanding calls ~2.1K. Eval latency (p95 58 s) is mostly the eval runner waiting for the per-minute token window, not answer time. Three check bugs found during the run were fixed and the stored outcomes rechecked with `--recheck` (no new model calls): non-breaking spaces between numbers and units, and verdicts like "Safe if raw, not safe if cooked". Findings, each with an eval case:
+> - **R5 gap (fixed in code):** "Can I eat grapefruit while I am on atorvastatin?" and "Does soya interfere with my thyroid tablets?" were answered by the model, because the understanding call did not set the `medication` flag. The input gate now refers food-with-a-medicine questions in code (`medication_interaction`). Verified by unit tests; the eval cases now expect an input-gate block.
+> - **Fixed from Phase 4:** "I'm vomiting after eating biryani" is now answered (with the 112/108 notice) instead of getting a clarifying question. The classification gate skips clarification when `risk_flags` contains `symptoms`. The case passed.
+> - **Phase 4 rice finding:** the leftover-rice answer no longer invents a fridge limit (the `forbid` check passed this run).
+> - **Open, understanding prompt:** with no earlier turn, "Is it safe?" and "How long does it last?" are classified `out_of_scope`, so users get the scope refusal instead of a clarifying question. "Leftovers have been in the fridge for 5 days" got a clarifying question although the general leftovers rule (3 days) applies. "My child has diarrhoea…" was not flagged `high_risk_group`.
+> - **Open, safety duration:** "I cooked rice yesterday and kept it in the fridge" stores the duration as "yesterday", which `parse_duration_hours` can't read. With no "within the limit" fact, the model chose a cautious discard. That is conservative but wrong per the rules.
+> - **Open, answer prompt:** the amla answer added an "adult RDA of about 40 mg", which is not in its context (`unverified_number` warning).
+> - **Data gap:** ghee has no energy value in the data (case `unc-ghee-calories`, not yet run).
+>
+> Load test (local stub-Groq server, real gates/DB/retrieval/storage, 20 users for 2 minutes): 268 requests, p95 **5.0 s** (< 6 s); all 7 injected bad outputs came back as `error` responses, each with a `failures` row. With the free-tier budgets and that day's spend already seeded, every request was refused in code in ~12 ms (p95 18 ms) and recorded as `budget_exceeded`.
+
 **Goal:** measurable quality, visibility into failures, and production hardening.
 
 **Rules strengthened:** R2, R4, R5, R7.
 
 ### 5.1 Eval suite
 
-- [ ] `backend/tests/evals/cases.yaml`: 100–150 labelled questions across the slices in §12 (classification, nutrition accuracy, food safety, clarification, scope, schema, Indian context).
-- [ ] `backend/tests/evals/run_evals.py` runs against the real Groq models and uses deterministic checks:
+- [x] `backend/tests/evals/cases.yaml`: 100–150 labelled questions across the slices in §12 (classification, nutrition accuracy, food safety, clarification, scope, schema, Indian context).
+- [x] `backend/tests/evals/run_evals.py` runs against the real Groq models and uses deterministic checks:
   - category
   - `answer_type`
   - numbers within ±5% of IFCT
@@ -398,40 +421,40 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
   - blocked in code (no Groq call)
   - 100% schema parse
   - 100% `source == null`
-- [ ] Optional LLM-as-judge rubric (clarity, relevance, no unsupported claims) using `openai/gpt-oss-120b` with its own strict schema.
-- [ ] Results are saved to `tests/evals/results/{date}_{PROMPT_VERSION}.json`, with a summary table printed.
-- [ ] A GitHub Action runs the evals manually or when files in `prompts/`, `schemas/` or `scope/` change.
+- [x] Optional LLM-as-judge rubric (clarity, relevance, no unsupported claims) using `openai/gpt-oss-120b` with its own strict schema.
+- [x] Results are saved to `tests/evals/results/{date}_{PROMPT_VERSION}.json`, with a summary table printed.
+- [x] A GitHub Action runs the evals manually or when files in `prompts/`, `schemas/` or `scope/` change.
 
 ### 5.2 Failure visibility
 
-- [ ] `GET /api/admin/failures` (requires the `ADMIN_TOKEN` header) with filters by `failure_type`, `stage` and date.
-- [ ] Saved SQL queries in Supabase: failures per day by type; top recurring `failure_type`; warning rate per prompt version.
-- [ ] Weekly review routine: every recurring failure type becomes an issue, gets fixed at the root (prompt, schema or code), and gets an eval case added. **Never** hidden with retries or post-processing.
+- [x] `GET /api/admin/failures` (requires the `ADMIN_TOKEN` header) with filters by `failure_type`, `stage` and date.
+- [ ] Saved SQL queries in Supabase (written and tested in `backend/sql/failure_review.sql`; still to be pasted into the Supabase SQL editor and saved): failures per day by type; top recurring `failure_type`; warning rate per prompt version.
+- [x] Weekly review routine (README, "Reviewing failures"): every recurring failure type becomes an issue, gets fixed at the root (prompt, schema or code), and gets an eval case added. **Never** hidden with retries or post-processing.
 
 ### 5.3 Hardening
 
-- [ ] Rate limiting with `slowapi` (20 requests/min per IP) → HTTP 429, which the UI shows as "Too many requests".
-- [ ] Structured JSON logging with `request_id`, `conversation_id`, category, latency per stage, and token usage.
-- [ ] Timeouts: Groq 30 s; database queries 5 s. Each is recorded as a failure when hit.
-- [ ] Input sanitization: strip control characters and cap message length on the server as well as the client.
-- [ ] Load test: 20 concurrent users with `locust` against staging; check p95 latency and that no failures are unrecorded.
+- [x] Rate limiting with `slowapi` (20 requests/min per IP) → HTTP 429, which the UI shows as "Too many requests".
+- [x] Structured JSON logging with `request_id`, `conversation_id`, category, latency per stage, and token usage.
+- [x] Timeouts: Groq 30 s; database queries 5 s. Each is recorded as a failure when hit.
+- [x] Input sanitization: strip control characters and cap message length on the server as well as the client.
+- [x] Load test: 20 concurrent users with `locust` (against a local stub-Groq server; there is no staging environment yet); check p95 latency and that no failures are unrecorded.
 
 ### 5.4 Frontend polish
 
-- [ ] Mobile layout: the sources panel stacks below the chat and stays empty.
-- [ ] Accessibility: focus states, `aria-live` on new messages, keyboard-only use.
-- [ ] Empty state, loading state, error state and rate-limit state all designed.
+- [x] Mobile layout: the sources panel stacks below the chat and stays empty.
+- [x] Accessibility: focus states, `aria-live` on new messages, keyboard-only use.
+- [x] Empty state, loading state, error state and rate-limit state all designed.
 
 ### Exit criteria
-- [ ] Baseline eval results are recorded for the current `PROMPT_VERSION`:
+- [ ] Baseline eval results are recorded for the current `PROMPT_VERSION` (recorded for 98/114 cases; scope and verdict targets missed, see status):
   - schema parse rate = **100%**
   - `source == null` = **100%**
   - scope blocks happen in code = **100%**
   - classification ≥ 90%
   - nutrition numeric accuracy ≥ 90%
   - food-safety verdict correctness ≥ 95%
-- [ ] Admin failures endpoint works, and the Supabase queries are saved.
-- [ ] Load test passes with p95 < 6 s, and every error has a `failures` row.
+- [ ] Admin failures endpoint works (done, tested), and the Supabase queries are saved (still to paste into Supabase).
+- [x] Load test passes with p95 < 6 s, and every error has a `failures` row.
 
 ---
 

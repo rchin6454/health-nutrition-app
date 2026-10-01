@@ -6,10 +6,23 @@ import type { ChatResponse } from "@/lib/types";
 export type ChatItem =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; response: ChatResponse }
-  // The request never produced a ChatResponse (network failure, HTTP error).
-  | { kind: "client_error"; id: string; text: string };
+  // The request never produced a ChatResponse (network failure, HTTP error, rate limit).
+  // `retry` is the message to send again; `rateLimited` styles it as a wait, not an error.
+  | {
+      kind: "client_error";
+      id: string;
+      text: string;
+      retry?: string;
+      rateLimited?: boolean;
+    };
 
-export default function MessageBubble({ item }: { item: ChatItem }) {
+type Props = {
+  item: ChatItem;
+  onRetry?: (message: string) => void;
+  retryDisabled?: boolean;
+};
+
+export default function MessageBubble({ item, onRetry, retryDisabled }: Props) {
   if (item.kind === "user") {
     return (
       <div className="flex justify-end">
@@ -21,12 +34,27 @@ export default function MessageBubble({ item }: { item: ChatItem }) {
   }
 
   if (item.kind === "client_error") {
+    const { retry } = item;
     return (
       <div
         role="alert"
-        className={`${bubble} border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950`}
+        className={
+          item.rateLimited
+            ? `${bubble} border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200`
+            : `${bubble} border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200`
+        }
       >
-        <p className="text-red-800 dark:text-red-200">{item.text}</p>
+        <p>{item.text}</p>
+        {retry && onRetry && (
+          <button
+            type="button"
+            onClick={() => onRetry(retry)}
+            disabled={retryDisabled}
+            className="mt-2 rounded-lg border border-current px-3 py-1 text-sm font-medium hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50 dark:hover:bg-black/20"
+          >
+            Try again
+          </button>
+        )}
       </div>
     );
   }

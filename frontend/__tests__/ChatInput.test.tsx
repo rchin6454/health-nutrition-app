@@ -38,13 +38,30 @@ test("blank messages are not sent", () => {
   );
 });
 
-test("is disabled while sending", () => {
-  const { box } = setup(true);
-  expect(box.disabled).toBe(true);
+test("while disabled, the box stays editable but nothing is sent", () => {
+  // Keeping the textarea enabled keeps keyboard focus in it while a reply is pending.
+  const { onSend, box } = setup(true);
+  expect(box.disabled).toBe(false);
+  fireEvent.change(box, { target: { value: "Next question" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+
+  expect(onSend).not.toHaveBeenCalled();
+  expect(box.value).toBe("Next question");
   expect(screen.getByRole("button", { name: "Send" })).toHaveProperty(
     "disabled",
     true,
   );
+});
+
+test("shows the status under the box and links it for screen readers", () => {
+  render(
+    <ChatInput onSend={vi.fn()} disabled status="Wait 5 s." inputRef={null} />,
+  );
+  const box = screen.getByLabelText("Your question");
+  const status = document.getElementById(
+    box.getAttribute("aria-describedby") ?? "",
+  );
+  expect(status?.textContent).toContain("Wait 5 s.");
 });
 
 test("limits input to 1,000 characters and shows the count", () => {

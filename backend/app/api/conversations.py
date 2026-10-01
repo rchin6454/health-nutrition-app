@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Response
 
-from app.failures import record_failure
+from app.failures import record_failure, storage_failure_type
 from app.schemas.answer import ChatResponse
 from app.schemas.conversation import AssistantMessageOut, ConversationOut, UserMessageOut
 from app.store import conversations as store
@@ -23,7 +23,7 @@ async def _storage_unavailable(conversation_id: str, exc: Exception) -> HTTPExce
         request_id=request_id,
         conversation_id=conversation_id,
         stage="storage",
-        failure_type="storage_error",
+        failure_type=storage_failure_type(exc),
         error_detail=repr(exc),
     )
     return HTTPException(503, f"Conversation storage unavailable (reference: {request_id})")

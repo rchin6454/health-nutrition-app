@@ -30,7 +30,12 @@ class Settings(BaseSettings):
     embedding_cache_dir: str | None = None
     # Comma-separated list, e.g. "https://app.vercel.app,http://localhost:3000".
     allowed_origins: str = "http://localhost:3000"
+    # Header X-Admin-Token for /api/admin/*; the admin endpoints are disabled while unset.
     admin_token: str | None = None
+    # Per-IP limit on POST /api/chat (slowapi syntax), and how many reverse proxies in front of
+    # the app append to X-Forwarded-For (Railway's edge: 1; 0 to use the socket address).
+    rate_limit_chat: str = "20/minute"
+    trusted_proxy_hops: int = 1
 
     @property
     def allowed_origins_list(self) -> list[str]:

@@ -1,0 +1,110 @@
+name: Evals
+
+# Runs the eval suite (backend/tests/evals/) against the real Groq models.
+# - On pushes and PRs that change prompts, schemas or scope gates: the smoke subset.
+# - Manually (Actions → Evals → Run workflow): the smoke subset, the full suite, or one slice.
+#
+# Needs the GROQ_API_KEY repository secret. Groq limits are per organization, so a key from the
+# production organization shares the live app's daily budget; a separate Groq organization's
+# key is recommended. On the free tier the full suite does not fit in one day: it stops at the
+# daily limit and saves partial results (continue locally with --resume).
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection:
+        description: "smoke, full, or a slice name (nutrition, food_safety, scope, ...)"
+        default: smoke
+        required: true
+      judge:
+        description: "Add the LLM-as-judge rubric (one extra answer-model call per answer)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - backend/app/prompts/**
+      - backend/app/schemas/**
+      - backend/app/scope/**
+      - backend/tests/evals/**
+  pull_request:
+    paths:
+      - backend/app/prompts/**
+      - backend/app/schemas/**
+      - backend/app/scope/**
+      - backend/tests/evals/**
+
+concurrency:
+  group: evals  # one run at a time: runs share the Groq budget
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      EMBEDDING_CACHE_DIR: ${{ github.workspace }}/.cache/fastembed
+    steps:
+      - name: Check for the Groq key
+        id: key
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "::warning::GROQ_API_KEY secret is not set (or not available to this PR); skipping evals"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.key.outputs.present == 'true'
+      - uses: astral-sh/setup-uv@v6
+        if: steps.key.outputs.present == 'true'
+        with:
+          enable-cache: true
+      - uses: actions/cache@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          path: |
+            backend/data/raw
+            .cache/fastembed
+          key: eval-data-${{ hashFiles('backend/scripts/ingest/fetch_raw.py') }}-bge-small-en-v1.5
+      - name: Build the knowledge database
+        if: steps.key.outputs.present == 'true'
+        run: |
+          uv sync --locked
+          [ -f data/raw/ifct2017/compositions.csv ] || uv run python -m scripts.ingest.fetch_raw
+          uv run python scripts/migrate.py
+          uv run python -m scripts.ingest.run_all
+      - name: Run evals
+        if: steps.key.outputs.present == 'true'
+        env:
+          SELECTION: ${{ inputs.selection || 'smoke' }}
+          JUDGE: ${{ inputs.judge }}
+        run: |
+          case "$SELECTION" in
+            smoke) ARGS=(--smoke) ;;
+            full) ARGS=() ;;
+            classification|nutrition|food_safety|clarification|scope|indian_context|uncertainty)
+              ARGS=(--slice "$SELECTION") ;;
+            *) echo "::error::unknown selection: $SELECTION"; exit 1 ;;
+          esac
+          if [ "$JUDGE" = "true" ]; then ARGS+=(--judge); fi
+          uv run python -m tests.evals.run_evals "${ARGS[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.key.outputs.present == 'true'
+        with:
+          name: eval-results
+          path: backend/tests/evals/results/
+          if-no-files-found: ignore

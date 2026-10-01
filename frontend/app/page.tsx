@@ -10,7 +10,7 @@ export default function Home() {
           Food &amp; Nutrition Assistant
         </h1>
       </header>
-      <main className="flex min-h-0 flex-1 flex-col gap-4 p-4 md:flex-row">
+      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 md:flex-row md:gap-4 md:p-4">
         <ChatPanel />
         <SourcesPanel />
       </main>

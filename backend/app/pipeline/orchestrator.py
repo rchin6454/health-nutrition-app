@@ -50,6 +50,7 @@ class TurnResult:
     usage: dict[str, Any] | None  # {"understanding": ..., "answer": ...}
     analysis: QuestionAnalysis | None  # stored on the user's message row
     context: ContextBundle | None  # stored on the assistant's message row (context_snapshot)
+    stage_ms: dict[str, int]  # latency of each stage that ran: understanding, knowledge, answer
 
 
 async def run_turn(
@@ -61,6 +62,7 @@ async def run_turn(
     usage: dict[str, Any] = {}
     analysis: QuestionAnalysis | None = None
     context: ContextBundle | None = None
+    stage_ms: dict[str, int] = {}
 
     def result(response: ChatResponse) -> TurnResult:
         return TurnResult(
@@ -71,6 +73,7 @@ async def run_turn(
             usage=usage or None,
             analysis=analysis,
             context=context,
+            stage_ms=stage_ms,
         )
 
     async def record(
@@ -135,6 +138,8 @@ async def run_turn(
         try:
             llm_result = await pending
         except LLMCallError as exc:
+            if exc.latency_ms is not None:
+                stage_ms[label] = exc.latency_ms
             await record(
                 "upstream_api",
                 exc.kind,
@@ -146,6 +151,7 @@ async def run_turn(
                 return error(busy_message(exc.retry_after_s))
             return error()
         usage[label] = llm_result.usage
+        stage_ms[label] = llm_result.latency_ms
         return llm_result
 
     # --- Model call 1: understanding ---
@@ -229,6 +235,7 @@ async def run_turn(
                     detail=lookup_error.detail,
                     latency_ms=int((time.perf_counter() - lookup_start) * 1000),
                 )
+        stage_ms["knowledge"] = int((time.perf_counter() - lookup_start) * 1000)
 
     # --- Model call 2: answer ---
     model = settings.model_answer

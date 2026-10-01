@@ -23,6 +23,7 @@ import httpx
 import pytest
 
 from app import db
+from app.api.rate_limit import limiter
 from app.knowledge import embeddings, entity_resolver
 from app.llm import client as llm_client
 from app.main import app
@@ -233,6 +234,14 @@ def fresh_llm_budgets() -> Iterator[None]:
     llm_client.reset_budgets()
     yield
     llm_client.reset_budgets()
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits() -> Iterator[None]:
+    """Every test starts with an unused per-IP chat limit."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture

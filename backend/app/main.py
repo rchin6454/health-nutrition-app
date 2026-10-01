@@ -1,19 +1,23 @@
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from app import db
-from app.api import chat, conversations, schema
+from app.api import admin, chat, conversations, schema
+from app.api.rate_limit import limiter, rate_limit_exceeded
 from app.config import get_settings
 from app.knowledge import embeddings
 from app.llm.client import budget_for
+from app.logging_config import configure_logging
 from app.store import conversations as store
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -75,16 +79,47 @@ async def seed_llm_budgets() -> None:
 
 app = FastAPI(title="Food, Nutrition & Food Safety Chatbot API", version="0.1.0", lifespan=lifespan)
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded)
+
+
+@app.middleware("http")
+async def access_log(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    start = time.perf_counter()
+    response = await call_next(request)
+    logger.info(
+        "%s %s %s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        extra={
+            "fields": {
+                "event": "http_request",
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "duration_ms": int((time.perf_counter() - start) * 1000),
+            }
+        },
+    )
+    return response
+
+
+# Added last, so it is the outermost middleware: CORS headers are on every response (429s too).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().allowed_origins_list,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
+    expose_headers=["Retry-After"],
 )
 
 app.include_router(chat.router)
 app.include_router(conversations.router)
 app.include_router(schema.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")
