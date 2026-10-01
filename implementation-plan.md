@@ -383,7 +383,7 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 5 — Quality, Evals and Hardening
 
-> **Status (2026-10-01):** code and tests done (721 backend, 38 frontend tests). **Deployed (2026-10-01, commit `4a21689`):** CI and the evals smoke run green; Railway `/api/health` reports database and embeddings ok; Vercel bundle has no "groq"; the live API refers "Can I eat grapefruit while I am on atorvastatin?" in code (`out_of_scope`). Open: `ADMIN_TOKEN` is not set on Railway, so `/api/admin/failures` returns 404 in production.
+> **Status (2026-10-01):** code and tests done (721 backend, 38 frontend tests). **Deployed (2026-10-01, commit `4a21689`):** CI and the evals smoke run green; Railway `/api/health` reports database and embeddings ok; Vercel bundle has no "groq"; the live API refers "Can I eat grapefruit while I am on atorvastatin?" in code (`out_of_scope`). `ADMIN_TOKEN` was set on Railway later the same day (see Phase 6).
 > **Update (2026-10-01), `answer-v0.5+understanding-v0.5`:** the open findings below are fixed, and all 8 cases that failed the baseline now pass (subset run: verdicts 2/2, scope blocked in code 2/2, schema and `source == null` 100%):
 > - **Safety duration:** `parse_duration_hours` reads relative days ("yesterday"/"kal" → 1 day, "day before yesterday"/"parso" → 2 days, "last night" → overnight), and the understanding prompt turns such days into lengths. `fs-rice-fridge-1-day` passes.
 > - **Understanding prompt:** "leftovers" with no dish named is the food "leftovers" (general rule, no clarification); vague follow-ups with no food ("Is it safe?") are `food_safety` with a clarifying question, not `out_of_scope`; a child or other high-risk person affected sets `high_risk_group`. `fs-leftovers-5-days`, `clar-is-it-safe`, `clar-how-long-does-it-last` and `fs-child-diarrhoea` pass.
@@ -470,11 +470,11 @@ Phases 3 and 4 both depend on Phase 2 and can run in parallel if two people are 
 
 ## Phase 6 — Launch and Handover
 
-> **Status (2026-10-01):** README done (demo shot list included); the checklist was run against production (commit `4a21689`, prompts `answer-v0.5+understanding-v0.5`). Every checklist row passes on production. Still open before tagging `v1.0.0`:
+> **Status (2026-10-01):** README done (demo shot list included); the checklist was run against production (commit `4a21689`, prompts `answer-v0.5+understanding-v0.5`). Every checklist row passes on production. Before tagging `v1.0.0`:
 > - **R4 / R2 on stored data: done (2026-10-01).** `scripts/check_stored.py` against Supabase: 0 of 71 stored claims have a non-null `source`; 29/29 stored assistant messages validate as `ChatResponse`; 27 conversations, 29 user + 29 assistant messages. Failures: 3 `rate_limited` (real Groq 429s, last 13:29), 3 `medication_dosing` + 2 `medication_interaction` scope blocks, 1 `budget_exceeded`, 1 `api_error` (2026-09-30), 1 `unverified_number` warning (the ghee answer).
 > - **Finding, shared Groq organization:** the 3 `rate_limited` rows are Groq 429s on production. The in-code budget can't see tokens that local evals spend on the same Groq organization, so the live app hit Groq's daily token limit. They were recorded correctly (R7). Fix: run evals with a key from a separate Groq organization.
 > - **R7 forced failure on production:** no staging deploy exists, so the invalid-`MODEL_ANSWER` case is verified only locally and in integration tests. On production, a `budget_exceeded` refusal was observed during the run (an `error` response with a reference ID).
-> - **`ADMIN_TOKEN`** is still unset on Railway (`/api/admin/failures` → 404).
+> - **`ADMIN_TOKEN`: done (2026-10-01).** Set on Railway; `/api/admin/failures` returns 401 with no token or a wrong one, and 200 with the token (latest rows: `rate_limited`, `unverified_number`).
 > - **Evals:** the full `v0.5` run stopped at 18/114 cases on the Groq daily limit (18/18 passed); finish it with `--resume`.
 > - **Demo:** optional (owner's decision, 2026-10-01); the shot list is in [README.md](README.md#demo).
 > - **Finding, latency:** each database round trip from Railway to Supabase takes about 1.2 s (`/api/health` 1.2 s, a blocked request with 4 writes 4.5 s, answers 10–16 s). Check that the Railway region is close to `ap-south-1` and that the pool reuses connections.
