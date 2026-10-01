@@ -60,6 +60,7 @@ jobs:
     steps:
       - name: Check for the Groq key
         id: key
+        working-directory: .  # runs before checkout, when backend/ does not exist yet
         run: |
           if [ -z "$GROQ_API_KEY" ]; then
             echo "::warning::GROQ_API_KEY secret is not set (or not available to this PR); skipping evals"
